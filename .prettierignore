@@ -6,6 +6,9 @@ next-env.d.ts
 package-lock.json
 public
 
+# generated Prisma client
+src/generated
+
 # Agent / instruction files — not ours to reformat
 .claude
 AGENTS.md

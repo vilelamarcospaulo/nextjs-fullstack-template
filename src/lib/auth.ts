@@ -1,10 +1,11 @@
-import Database from "better-sqlite3";
 import { betterAuth } from "better-auth";
+import { prismaAdapter } from "better-auth/adapters/prisma";
+import { prisma } from "@/lib/prisma";
 
-// Server-side Better Auth instance. Uses a local SQLite file via the built-in
-// Kysely adapter (no separate ORM yet). Google is the only provider for now.
+// Server-side Better Auth instance. Persistence runs through Prisma (typed
+// client, SQLite). Google is the only provider for now.
 export const auth = betterAuth({
-  database: new Database("./sqlite.db"),
+  database: prismaAdapter(prisma, { provider: "sqlite" }),
   baseURL: process.env.BETTER_AUTH_URL,
   socialProviders: {
     google: {
