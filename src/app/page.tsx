@@ -1,3 +1,6 @@
+import { headers } from "next/headers";
+import { auth } from "@/lib/auth";
+import AuthButtons from "./auth-buttons";
 import Greeter from "./greeter";
 
 // Render on every request (not prerendered at build time), so the server
@@ -6,8 +9,12 @@ export const dynamic = "force-dynamic";
 
 // Server Component: rendered on the server for every request. The timestamp
 // below is computed server-side, so a full-page reload proves SSR is live.
-export default function Home() {
+export default async function Home() {
   const renderedAt = new Date().toISOString();
+
+  // Read the auth session on the server so the signed-in state is correct on
+  // first paint (and so this is the real source of truth, not the client).
+  const session = await auth.api.getSession({ headers: await headers() });
 
   return (
     <main className="mx-auto flex max-w-2xl flex-1 flex-col items-start justify-center gap-8 px-6 py-16">
@@ -20,6 +27,8 @@ export default function Home() {
           actions in one app.
         </p>
       </div>
+
+      <AuthButtons user={session?.user ?? null} />
 
       <p className="text-sm opacity-60">
         <span className="font-mono">Server-rendered at:</span> {renderedAt}
