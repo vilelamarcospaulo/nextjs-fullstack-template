@@ -1,0 +1,12 @@
+.next
+out
+build
+node_modules
+next-env.d.ts
+package-lock.json
+public
+
+# Agent / instruction files — not ours to reformat
+.claude
+AGENTS.md
+CLAUDE.md
