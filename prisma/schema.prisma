@@ -22,9 +22,23 @@ model User {
   updatedAt     DateTime  @updatedAt
   sessions      Session[]
   accounts      Account[]
+  profile       Profile?
 
   @@unique([email])
   @@map("user")
+}
+
+model Profile {
+  id        String    @id @default(uuid())
+  userId    String    @unique
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  birthdate DateTime?
+  bio       String?
+  location  String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@map("profile")
 }
 
 model Session {

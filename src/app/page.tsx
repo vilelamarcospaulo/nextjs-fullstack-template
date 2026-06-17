@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import Link from "next/link";
 import { auth } from "@/lib/auth";
 import AuthButtons from "./auth-buttons";
 import Greeter from "./greeter";
@@ -28,7 +29,19 @@ export default async function Home() {
         </p>
       </div>
 
-      <AuthButtons user={session?.user ?? null} />
+      <div className="flex flex-col gap-3">
+        <AuthButtons user={session?.user ?? null} />
+        {/* Show "Edit profile" only when signed in — same secondary-button style
+            used throughout the app (see auth-buttons.tsx). */}
+        {session?.user && (
+          <Link
+            href="/profile"
+            className="w-fit rounded-md border border-black/15 px-4 py-2 text-sm transition-colors hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
+          >
+            Edit profile
+          </Link>
+        )}
+      </div>
 
       <p className="text-sm opacity-60">
         <span className="font-mono">Server-rendered at:</span> {renderedAt}
