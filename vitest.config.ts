@@ -1,20 +1,20 @@
 import { defineConfig } from "vitest/config";
 
-// Unit-test config. The targets are framework-free logic (pure utils, the
-// domain validator, and Prisma-mocked use cases), so we run in a plain Node
-// environment with no Next.js harness. resolve.tsconfigPaths wires the "@/*"
-// alias so test imports resolve the same way the app does.
+// Two test projects so unit and integration runs can be selected independently
+// (npm run test:unit / test:integration) while `vitest run` executes both.
+//
+// - unit: framework-free logic (pure utils, the domain validator, Prisma-mocked
+//   use cases). No database, no global setup.
+// - integration: the real HTTP route handlers exercised end to end against a
+//   throwaway migrated SQLite DB. Only this project pays the DB setup cost.
+//
+// Each project uses `extends: true` to inherit the root resolve (the "@/*"
+// alias via tsconfigPaths) and the shared node/globals test settings.
 export default defineConfig({
   resolve: { tsconfigPaths: true },
   test: {
     environment: "node",
     globals: true,
-    include: ["src/**/*.test.ts"],
-    // Provisions a fresh migrated SQLite DB for the route integration tests.
-    globalSetup: ["./test/global-setup.ts"],
-    // Workers construct the Prisma client (@/lib/prisma) against the temp DB.
-    // Must match the URL migrated in test/global-setup.ts.
-    env: { DATABASE_URL: "file:./prisma/test.db" },
     coverage: {
       provider: "v8",
       reporter: ["text", "html"],
@@ -26,5 +26,26 @@ export default defineConfig({
         "src/app/actions.ts",
       ],
     },
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: "unit",
+          include: ["src/utils/**/*.test.ts", "src/internal/**/*.test.ts"],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "integration",
+          include: ["src/app/**/*.test.ts"],
+          // Provisions a fresh migrated SQLite DB for the route handlers.
+          globalSetup: ["./test/global-setup.ts"],
+          // Workers construct the Prisma client (@/lib/prisma) against the temp
+          // DB. Must match the URL migrated in test/global-setup.ts.
+          env: { DATABASE_URL: "file:./prisma/test.db" },
+        },
+      },
+    ],
   },
 });
