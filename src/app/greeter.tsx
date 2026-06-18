@@ -45,6 +45,9 @@ export default function Greeter() {
             // of an error boundary so the page stays usable.
             <p className="text-muted-foreground text-sm">
               Please{" "}
+              {/* OAuth API endpoint, not a Next page — full-page navigation is
+                  intended (it issues a redirect), so a plain <a> is correct. */}
+              {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
               <a href="/api/auth/signin" className="underline">
                 sign in
               </a>{" "}

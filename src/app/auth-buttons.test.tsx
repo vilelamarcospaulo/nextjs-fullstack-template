@@ -10,6 +10,7 @@ vi.mock("@/lib/auth-client", () => ({
 
 describe("SignInButton", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.mocked(signIn.social).mockResolvedValue(undefined as never);
   });
 

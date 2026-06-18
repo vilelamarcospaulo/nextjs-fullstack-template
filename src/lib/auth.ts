@@ -37,8 +37,8 @@ export const auth = betterAuth({
   // explicit here so future tuning is visible in code review.
   rateLimit: {
     enabled: true,
-    window: 10,  // seconds
-    max: 100,    // requests per window
+    window: 10, // seconds
+    max: 100, // requests per window
     storage: "memory",
   },
 });

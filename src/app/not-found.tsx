@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 export default function NotFound() {
   return (
     <div className="mx-auto flex max-w-md flex-col items-center gap-6 px-4 py-24 text-center">
-      <p className="text-muted-foreground text-sm font-medium uppercase tracking-widest">
+      <p className="text-muted-foreground text-sm font-medium tracking-widest uppercase">
         404
       </p>
       <h1 className="text-3xl font-bold tracking-tight">Page not found</h1>

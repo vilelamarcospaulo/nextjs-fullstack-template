@@ -15,12 +15,12 @@ export default function Loading() {
 
       {/* Card grid skeleton */}
       <div className="grid gap-6 sm:grid-cols-2">
-        <div className="rounded-xl border p-6 flex flex-col gap-4">
+        <div className="flex flex-col gap-4 rounded-xl border p-6">
           <Skeleton className="h-5 w-24" />
           <Skeleton className="h-4 w-48" />
           <Skeleton className="h-24 w-full rounded-md" />
         </div>
-        <div className="rounded-xl border p-6 flex flex-col gap-4">
+        <div className="flex flex-col gap-4 rounded-xl border p-6">
           <Skeleton className="h-5 w-24" />
           <Skeleton className="h-4 w-48" />
           <Skeleton className="h-24 w-full rounded-md" />

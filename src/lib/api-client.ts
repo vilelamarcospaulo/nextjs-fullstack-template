@@ -46,7 +46,8 @@ export async function apiFetch<T>(
   // Only forward `init` when the caller provided it; passing `undefined`
   // explicitly would change the argument count and break test spies that assert
   // the exact call signature (e.g. `toHaveBeenCalledWith("/api/hello")`).
-  const res = init !== undefined ? await fetch(input, init) : await fetch(input);
+  const res =
+    init !== undefined ? await fetch(input, init) : await fetch(input);
 
   // Attempt to parse the body as JSON regardless of status, because both
   // success and error envelopes use JSON.

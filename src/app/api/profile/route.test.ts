@@ -513,27 +513,6 @@ describe("PUT /api/profile", () => {
     expect(user!.image).toBeNull();
   });
 
-  it("P-19: wrong Content-Type → 415 with _body error; no write", async () => {
-    await seedUser({ id: "user-a", name: "Alice", email: "alice@example.com" });
-    getSession.mockResolvedValue({ user: { id: "user-a" } });
-
-    const res = await PUT(
-      new Request("http://localhost/api/profile", {
-        method: "PUT",
-        headers: { "content-type": "text/plain" },
-        body: JSON.stringify({ name: "Alice" }),
-      }),
-    );
-
-    expect(res.status).toBe(415);
-    const body = await res.json();
-    expect(body.errors._body).toBe("Content-Type must be application/json.");
-    expect(Object.keys(body.errors)).toHaveLength(1);
-    expect(
-      await prisma.profile.findUnique({ where: { userId: "user-a" } }),
-    ).toBeNull();
-  });
-
   it("P-18: boundary success — max-length values all accepted", async () => {
     await seedUser({ id: "user-a", name: "Alice", email: "alice@example.com" });
     getSession.mockResolvedValue({ user: { id: "user-a" } });

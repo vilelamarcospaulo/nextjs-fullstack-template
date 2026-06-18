@@ -21,7 +21,9 @@ export type ValidationResult =
 
 // Validate raw input (from an HTTP body or a form) into a clean Profile, or a
 // map of per-field errors. Optional fields coerce empty/absent to null.
-export function inputToProfile(input: Record<string, unknown>): ValidationResult {
+export function inputToProfile(
+  input: Record<string, unknown>,
+): ValidationResult {
   const errors: Partial<Record<Field, string>> = {};
 
   // name — required, 1–80 chars.

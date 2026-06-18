@@ -22,9 +22,7 @@ const MAX_NAME_LENGTH = 100;
 // incoming request headers forwarded by next/headers. Unauthenticated callers
 // receive an { ok: false } result rather than an exception so the client can
 // render a friendly prompt instead of an unhandled error boundary.
-export async function generateGreeting(
-  name: string,
-): Promise<GreetingResult> {
+export async function generateGreeting(name: string): Promise<GreetingResult> {
   // ── 1. Auth check ──────────────────────────────────────────────────────────
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) {

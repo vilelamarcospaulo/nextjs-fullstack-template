@@ -6,6 +6,11 @@
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
+    // prisma/seed.ts imports the generated client with an explicit `.ts`
+    // extension because it runs at runtime via `node prisma/seed.ts` (Node TS
+    // stripping doesn't resolve extensionless relative TS imports). Allowed
+    // here because `noEmit` is set.
+    "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",

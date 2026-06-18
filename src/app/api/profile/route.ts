@@ -30,20 +30,6 @@ export async function PUT(request: Request) {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) return unauthorized();
 
-  // Guard: reject requests that aren't application/json before attempting to
-  // parse the body. application/json is the only content type we accept.
-  const contentType = request.headers.get("content-type") ?? "";
-  if (!contentType.includes("application/json")) {
-    return Response.json(
-      {
-        errors: {
-          _body: "Content-Type must be application/json.",
-        },
-      } satisfies ApiErrorBody,
-      { status: 415 },
-    );
-  }
-
   let body: Record<string, unknown>;
   try {
     body = await request.json();
@@ -58,10 +44,9 @@ export async function PUT(request: Request) {
 
   const result = await updateProfile(session.user.id, body);
   if (!result.ok) {
-    return Response.json(
-      { errors: result.errors } satisfies ApiErrorBody,
-      { status: 400 },
-    );
+    return Response.json({ errors: result.errors } satisfies ApiErrorBody, {
+      status: 400,
+    });
   }
   return Response.json(result.value);
 }

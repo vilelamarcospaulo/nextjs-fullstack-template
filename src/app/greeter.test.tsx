@@ -110,7 +110,10 @@ describe("Greeter", () => {
 
   it("unauthenticated result renders sign-in prompt and no <pre>", async () => {
     const user = userEvent.setup();
-    const unauthResult: GreetingResult = { ok: false, error: "unauthenticated" };
+    const unauthResult: GreetingResult = {
+      ok: false,
+      error: "unauthenticated",
+    };
     mockGenerateGreeting.mockResolvedValue(unauthResult);
 
     render(<Greeter />);
