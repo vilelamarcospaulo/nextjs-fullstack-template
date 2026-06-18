@@ -39,7 +39,7 @@ export default async function ProfilePage() {
         {/* Back link — minimal, matches the secondary-button style from page.tsx */}
         <Link
           href="/"
-          className="text-sm opacity-60 hover:opacity-100 transition-opacity"
+          className="text-sm opacity-60 transition-opacity hover:opacity-100"
         >
           ← Back
         </Link>

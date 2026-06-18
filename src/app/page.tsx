@@ -1,55 +1,70 @@
 import { headers } from "next/headers";
 import Link from "next/link";
 import { auth } from "@/lib/auth";
-import AuthButtons from "./auth-buttons";
+import { SignInButton } from "./auth-buttons";
 import Greeter from "./greeter";
+import ApiHelloDemo from "./api-hello-demo";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
-// Render on every request (not prerendered at build time), so the server
-// timestamp below is genuinely per-request and proves SSR is live.
 export const dynamic = "force-dynamic";
 
-// Server Component: rendered on the server for every request. The timestamp
-// below is computed server-side, so a full-page reload proves SSR is live.
 export default async function Home() {
-  const renderedAt = new Date().toISOString();
-
-  // Read the auth session on the server so the signed-in state is correct on
-  // first paint (and so this is the real source of truth, not the client).
   const session = await auth.api.getSession({ headers: await headers() });
 
   return (
-    <main className="mx-auto flex max-w-2xl flex-1 flex-col items-start justify-center gap-8 px-6 py-16">
-      <div className="flex flex-col gap-3">
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-          content-generator
+    <div className="mx-auto flex max-w-5xl flex-col gap-12 px-4 py-16 sm:px-6">
+      <section className="flex flex-col items-center gap-6 py-8 text-center">
+        <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">
+          Content Generator
         </h1>
-        <p className="text-base opacity-70">
-          A Next.js fullstack service — SSR frontend, route handlers, and server
-          actions in one app.
+        <p className="text-muted-foreground max-w-xl text-lg">
+          Generate personalised content with server actions and live API routes
+          — all in one fullstack Next.js app.
         </p>
-      </div>
-
-      <div className="flex flex-col gap-3">
-        <AuthButtons user={session?.user ?? null} />
-        {/* Show "Edit profile" only when signed in — same secondary-button style
-            used throughout the app (see auth-buttons.tsx). */}
-        {session?.user && (
-          <Link
-            href="/profile"
-            className="w-fit rounded-md border border-black/15 px-4 py-2 text-sm transition-colors hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
-          >
-            Edit profile
+        {session?.user ? (
+          <Link href="/profile" className={cn(buttonVariants({ size: "lg" }))}>
+            Edit your profile
           </Link>
+        ) : (
+          <SignInButton />
         )}
+      </section>
+
+      <div className="grid gap-6 sm:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Greeter</CardTitle>
+            <CardDescription>
+              Invoke a server action directly from the client — no HTTP endpoint
+              required.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Greeter />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>API Hello</CardTitle>
+            <CardDescription>
+              Call the <code className="font-mono text-xs">/api/hello</code>{" "}
+              route handler and inspect the JSON response.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ApiHelloDemo />
+          </CardContent>
+        </Card>
       </div>
-
-      <p className="text-sm opacity-60">
-        <span className="font-mono">Server-rendered at:</span> {renderedAt}
-        <br />
-        Reload the page to see this timestamp change.
-      </p>
-
-      <Greeter />
-    </main>
+    </div>
   );
 }
