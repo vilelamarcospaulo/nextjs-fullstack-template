@@ -12,6 +12,9 @@ import { defineConfig } from "vitest/config";
 // alias via tsconfigPaths) and the shared node/globals test settings.
 export default defineConfig({
   resolve: { tsconfigPaths: true },
+  // JSX/TSX is transformed by Vitest 4's built-in oxc (automatic runtime, from
+  // tsconfig `jsx: react-jsx`) — no @vitejs/plugin-react, which would pull a
+  // Babel 8 dep that conflicts with the shadcn CLI's Babel 7 dep.
   test: {
     environment: "node",
     globals: true,
@@ -24,6 +27,11 @@ export default defineConfig({
         "src/app/api/profile/**",
         "src/app/api/hello/**",
         "src/app/actions.ts",
+        "src/components/**",
+        "src/app/auth-buttons.tsx",
+        "src/app/greeter.tsx",
+        "src/app/api-hello-demo.tsx",
+        "src/app/profile/profile-form.tsx",
       ],
     },
     projects: [
@@ -44,6 +52,18 @@ export default defineConfig({
           // Workers construct the Prisma client (@/lib/prisma) against the temp
           // DB. Must match the URL migrated in test/global-setup.ts.
           env: { DATABASE_URL: "file:./prisma/test.db" },
+        },
+      },
+      {
+        // User-perspective component tests: render a client component in jsdom,
+        // simulate clicks/typing, assert what the user sees. Matches *.test.tsx
+        // so it never overlaps the .test.ts unit/integration projects.
+        extends: true,
+        test: {
+          name: "ui",
+          environment: "jsdom",
+          include: ["src/**/*.test.tsx"],
+          setupFiles: ["./test/setup-ui.ts"],
         },
       },
     ],

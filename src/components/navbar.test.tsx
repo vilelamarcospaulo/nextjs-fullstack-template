@@ -1,0 +1,190 @@
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { useRouter } from "next/navigation";
+import { signOut } from "@/lib/auth-client";
+import { Navbar } from "@/components/navbar";
+
+vi.mock("next/navigation", () => ({ useRouter: vi.fn() }));
+
+// base-ui AvatarImage never mounts in jsdom (no image-loading events fire).
+// Replace the ui/avatar module with simple HTML equivalents so we can verify
+// the src prop is forwarded without needing a real network layer.
+vi.mock("@/components/ui/avatar", () => ({
+  Avatar: ({ children, ...props }: React.ComponentPropsWithoutRef<"span">) => (
+    <span data-slot="avatar" {...props}>
+      {children}
+    </span>
+  ),
+  AvatarImage: ({
+    src,
+    alt,
+    ...props
+  }: React.ComponentPropsWithoutRef<"img">) =>
+    // eslint-disable-next-line @next/next/no-img-element -- test mock of AvatarImage
+    src ? <img src={src} alt={alt} {...props} /> : null,
+  AvatarFallback: ({
+    children,
+    ...props
+  }: React.ComponentPropsWithoutRef<"span">) => (
+    <span data-slot="avatar-fallback" {...props}>
+      {children}
+    </span>
+  ),
+}));
+
+vi.mock("@/lib/auth-client", () => ({
+  signIn: { social: vi.fn() },
+  signOut: vi.fn(),
+}));
+
+vi.mock("next-themes", () => ({
+  useTheme: () => ({ resolvedTheme: "light", setTheme: vi.fn() }),
+}));
+
+// next/link renders a plain <a> in tests
+vi.mock("next/link", () => ({
+  default: ({
+    href,
+    children,
+    ...rest
+  }: {
+    href: string;
+    children: React.ReactNode;
+    [key: string]: unknown;
+  }) => (
+    <a href={href} {...rest}>
+      {children}
+    </a>
+  ),
+}));
+
+describe("Navbar", () => {
+  let mockPush: ReturnType<typeof vi.fn>;
+  let mockRefresh: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    mockPush = vi.fn();
+    mockRefresh = vi.fn();
+    vi.mocked(useRouter).mockReturnValue({
+      push: mockPush,
+      refresh: mockRefresh,
+    } as ReturnType<typeof useRouter>);
+    vi.mocked(signOut).mockResolvedValue(undefined as never);
+  });
+
+  describe("logged out (user=null)", () => {
+    it("shows 'Sign in with Google' button", () => {
+      render(<Navbar user={null} />);
+      expect(
+        screen.getByRole("button", { name: /sign in with google/i }),
+      ).toBeInTheDocument();
+    });
+
+    it("does NOT show the user menu trigger", () => {
+      render(<Navbar user={null} />);
+      expect(
+        screen.queryByRole("button", { name: "User menu" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("brand link 'Content Generator' points to '/'", () => {
+      render(<Navbar user={null} />);
+      const link = screen.getByRole("link", { name: "Content Generator" });
+      expect(link).toBeInTheDocument();
+      expect(link).toHaveAttribute("href", "/");
+    });
+
+    it("theme toggle is present", () => {
+      render(<Navbar user={null} />);
+      expect(
+        screen.getByRole("button", { name: "Toggle theme" }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe("initials helper (via AvatarFallback)", () => {
+    // [name, email, expected fallback]. "Anne Marie Dupont" → first+last word "AD".
+    const cases: [string, string, string][] = [
+      ["Marcos Vilela", "mv@example.com", "MV"],
+      ["Anne Marie Dupont", "anne@example.com", "AD"],
+      ["Marcos", "m@example.com", "MA"],
+      ["X", "x@example.com", "X"],
+      ["", "alice@example.com", "A"],
+      ["", "1bob@x.com", "1"],
+      ["", "", "?"],
+    ];
+
+    it.each(cases)(
+      "name=%j email=%j → fallback text %j",
+      async (name, email, expected) => {
+        render(<Navbar user={{ name, email, image: null }} />);
+        // AvatarFallback renders via base-ui; find it by its text content
+        await waitFor(() => {
+          expect(screen.getByText(expected)).toBeInTheDocument();
+        });
+      },
+    );
+  });
+
+  describe("logged in", () => {
+    const loggedInUser = {
+      name: "Marcos Vilela",
+      email: "marcos@example.com",
+      image: null as string | null,
+    };
+
+    it("shows the avatar trigger with aria-label 'User menu'", () => {
+      render(<Navbar user={loggedInUser} />);
+      expect(
+        screen.getByRole("button", { name: "User menu" }),
+      ).toBeInTheDocument();
+    });
+
+    it("'Profile' and 'Sign out' are NOT visible before opening the menu", () => {
+      render(<Navbar user={loggedInUser} />);
+      expect(screen.queryByText("Profile")).not.toBeInTheDocument();
+      expect(screen.queryByText("Sign out")).not.toBeInTheDocument();
+    });
+
+    it("after clicking User menu the dropdown shows name, email, Profile link, and Sign out", async () => {
+      const user = userEvent.setup();
+      render(<Navbar user={loggedInUser} />);
+
+      await user.click(screen.getByRole("button", { name: "User menu" }));
+
+      expect(await screen.findByText("Marcos Vilela")).toBeInTheDocument();
+      expect(await screen.findByText("marcos@example.com")).toBeInTheDocument();
+
+      const profileLink = await screen.findByRole("link", { name: "Profile" });
+      expect(profileLink).toBeInTheDocument();
+      expect(profileLink).toHaveAttribute("href", "/profile");
+
+      expect(await screen.findByText("Sign out")).toBeInTheDocument();
+    });
+
+    it("clicking 'Sign out' calls signOut once, then router.refresh", async () => {
+      const user = userEvent.setup();
+      render(<Navbar user={loggedInUser} />);
+
+      await user.click(screen.getByRole("button", { name: "User menu" }));
+      const signOutItem = await screen.findByText("Sign out");
+      await user.click(signOutItem);
+
+      await waitFor(() => {
+        expect(signOut).toHaveBeenCalledOnce();
+        expect(mockRefresh).toHaveBeenCalledOnce();
+      });
+    });
+
+    it("when image is provided the avatar img has that src", () => {
+      const imgUser = {
+        ...loggedInUser,
+        image: "https://example.com/avatar.png",
+      };
+      render(<Navbar user={imgUser} />);
+      // The mocked AvatarImage renders a real <img> when src is provided
+      const img = screen.getByRole("img", { name: loggedInUser.name });
+      expect(img).toHaveAttribute("src", "https://example.com/avatar.png");
+    });
+  });
+});
