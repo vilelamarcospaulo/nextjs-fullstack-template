@@ -37,7 +37,13 @@ export function SignInButton() {
 
   async function handleSignIn() {
     setPending(true);
-    await signIn.social({ provider: "google", callbackURL: "/" });
+    try {
+      await signIn.social({ provider: "google", callbackURL: "/" });
+    } finally {
+      // Reset so a cancelled/failed sign-in doesn't leave the button stuck
+      // disabled. (On success the OAuth redirect navigates away first.)
+      setPending(false);
+    }
   }
 
   return (
