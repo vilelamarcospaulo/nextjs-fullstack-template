@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs for the same ref (e.g. rapid pushes to a PR branch).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+  # src/lib/env.ts validates these at import time and throws if any is empty, so
+  # `next build` and the integration route tests need all five present. CI never
+  # talks to real Google/SQLite, so dummy non-empty values are sufficient. The
+  # integration test project overrides DATABASE_URL via vitest.config.ts.
+  DATABASE_URL: "file:./dev.db"
+  BETTER_AUTH_SECRET: "ci-dummy-secret-not-used-for-anything-real"
+  BETTER_AUTH_URL: "http://localhost:3000"
+  GOOGLE_CLIENT_ID: "ci-dummy-client-id"
+  GOOGLE_CLIENT_SECRET: "ci-dummy-client-secret"
+
+jobs:
+  ci:
+    name: ${{ matrix.task }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Each entry maps to an npm script in package.json.
+        task: ["lint", "format:check", "test", "build"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Node >= 23.6 so Prisma's `node prisma/seed.ts` (native TS stripping)
+          # works; using the current major to stay close to local dev.
+          node-version: "24"
+
+      # No lockfile is committed, so setup-node's lockfile-based npm cache can't
+      # be used. Cache the npm download cache (~/.npm) keyed on package.json to
+      # still speed up installs.
+      - name: Cache npm downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('package.json') }}
+          restore-keys: ${{ runner.os }}-npm-
+
+      # No package-lock.json in the repo, so `npm ci` is not possible — use install.
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      # The Prisma client (src/generated/prisma) is gitignored; every task below
+      # imports from it, so generate it before running anything.
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Run ${{ matrix.task }}
+        run: npm run ${{ matrix.task }}
