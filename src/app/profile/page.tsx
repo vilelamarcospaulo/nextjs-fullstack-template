@@ -1,6 +1,5 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { getProfile } from "@/internal/use_case/profile";
 import ProfileForm, { type ProfileFormInitial } from "./profile-form";
@@ -33,25 +32,11 @@ export default async function ProfilePage() {
 
   const email = view?.email ?? session.user.email ?? "";
 
+  // The navbar provides global navigation and the form's Card carries its own
+  // title, so the page is just a centered container around the form.
   return (
-    <main className="mx-auto flex max-w-2xl flex-1 flex-col items-start justify-center gap-8 px-6 py-16">
-      <div className="flex w-full flex-col gap-3">
-        {/* Back link — minimal, matches the secondary-button style from page.tsx */}
-        <Link
-          href="/"
-          className="text-sm opacity-60 transition-opacity hover:opacity-100"
-        >
-          ← Back
-        </Link>
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-          Edit profile
-        </h1>
-        <p className="text-base opacity-70">
-          Update your display name, avatar, and personal details.
-        </p>
-      </div>
-
+    <div className="mx-auto w-full max-w-2xl px-6 py-12">
       <ProfileForm initial={initial} email={email} />
-    </main>
+    </div>
   );
 }
