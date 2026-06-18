@@ -10,7 +10,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -66,12 +65,14 @@ export function Navbar({ user }: { user: NavUser | null }) {
                 </Avatar>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuLabel className="flex flex-col gap-0.5">
+                {/* Identity header — display only, not a Menu.GroupLabel (base-ui
+                    requires those to live inside a Menu.Group). */}
+                <div className="flex flex-col gap-0.5 px-1.5 py-1.5">
                   <span className="text-sm font-medium">{user.name}</span>
                   <span className="text-muted-foreground text-xs">
                     {user.email}
                   </span>
-                </DropdownMenuLabel>
+                </div>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem>
                   <Link href="/profile" className="w-full">
