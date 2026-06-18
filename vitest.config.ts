@@ -51,7 +51,13 @@ export default defineConfig({
           globalSetup: ["./test/global-setup.ts"],
           // Workers construct the Prisma client (@/lib/prisma) against the temp
           // DB. Must match the URL migrated in test/global-setup.ts.
-          env: { DATABASE_URL: "file:./prisma/test.db" },
+          env: {
+            DATABASE_URL: "file:./prisma/test.db",
+            BETTER_AUTH_SECRET: "auth_secret",
+            BETTER_AUTH_URL: "http://localhost:3000",
+            GOOGLE_CLIENT_ID: "google_client_id",
+            GOOGLE_CLIENT_SECRET: "google_client_secret"
+          },
         },
       },
       {
