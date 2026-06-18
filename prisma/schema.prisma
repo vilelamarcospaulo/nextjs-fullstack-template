@@ -12,6 +12,35 @@ datasource db {
   provider = "sqlite"
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// AUTH-OWNED TABLES (user / session / account / verification)
+//
+// These tables are owned by better-auth. Their column set, unique constraints,
+// and indexes MUST match what better-auth expects in
+// @better-auth/core/dist/db/get-tables.mjs (getAuthTables). Verified facts:
+//
+//   user.email          unique: true            -> @@unique([email])     (kept)
+//   session.token       unique: true            -> @@unique([token])     (kept)
+//   session.userId      index: true             -> @@index([userId])     (kept)
+//   account.userId      index: true             -> @@index([userId])     (kept)
+//   verification.id'fier index: true            -> @@index([identifier]) (kept)
+//
+// NOT added (would DIVERGE from better-auth's expected schema):
+//   - @@index([expiresAt]) on session / verification: better-auth defines NO
+//     index on expiresAt. It cleans up expired rows by querying, but does not
+//     declare the index, so adding one drifts from `@better-auth/cli generate`.
+//   - @@unique([providerId, accountId]) on account: better-auth marks neither
+//     field unique and declares no composite unique. The OAuth lookup is keyed
+//     by (providerId, accountId, userId) at the app layer, not enforced in DB.
+//   These are "left to better-auth".
+//
+// Safe & additive: @default(now()) on updatedAt. better-auth always supplies
+// createdAt/updatedAt at the application layer (defaultValue/onUpdate in
+// getAuthTables), so a DB-level default never conflicts with better-auth — it
+// only protects raw/seed/backfill writes that bypass Prisma's @updatedAt from
+// violating NOT NULL.
+// ─────────────────────────────────────────────────────────────────────────────
+
 model User {
   id            String    @id
   name          String
@@ -19,7 +48,7 @@ model User {
   emailVerified Boolean   @default(false)
   image         String?
   createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  updatedAt     DateTime  @default(now()) @updatedAt
   sessions      Session[]
   accounts      Account[]
   profile       Profile?
@@ -28,15 +57,32 @@ model User {
   @@map("user")
 }
 
+// APP-OWNED table — full latitude here.
+//
+// id: cuid() (not uuid()). cuid is time-ordered and monotonic, so primary-key
+// inserts append to the end of the B-tree index instead of landing at random
+// positions. Random uuid v4 fragments the index and bloats it under churn —
+// this matters most for derived Postgres projects (see prisma/POSTGRES.md),
+// where a randomly-ordered PK is a known write-amplification footgun.
+//
+// updatedAt carries @default(now()) so non-Prisma writers (seed.ts uses Prisma
+// and honors @updatedAt, but raw SQL backfills do not) cannot violate NOT NULL.
+//
+// birthdate modeling note: a birthdate is a calendar day with no meaningful
+// time-of-day component. SQLite has no native DATE type (it stores DATETIME as
+// text) and Prisma rejects `@db.Date` for the sqlite connector, so it stays a
+// plain DateTime? here. In a derived Postgres project, add `@db.Date` to map it
+// to the native `date` column and avoid spurious timezone math — see
+// prisma/POSTGRES.md. Always write birthdates at UTC midnight to stay portable.
 model Profile {
-  id        String    @id @default(uuid())
+  id        String    @id @default(cuid())
   userId    String    @unique
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   birthdate DateTime?
   bio       String?
   location  String?
   createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  updatedAt DateTime  @default(now()) @updatedAt
 
   @@map("profile")
 }
@@ -46,7 +92,7 @@ model Session {
   expiresAt DateTime
   token     String
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime @default(now()) @updatedAt
   ipAddress String?
   userAgent String?
   userId    String
@@ -71,7 +117,7 @@ model Account {
   scope                 String?
   password              String?
   createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  updatedAt             DateTime  @default(now()) @updatedAt
 
   @@index([userId])
   @@map("account")
@@ -83,7 +129,7 @@ model Verification {
   value      String
   expiresAt  DateTime
   createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  updatedAt  DateTime @default(now()) @updatedAt
 
   @@index([identifier])
   @@map("verification")

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { apiFetch } from "@/lib/api-client";
 
 export default function ApiHelloDemo() {
   const [apiResult, setApiResult] = useState<string | null>(null);
@@ -12,8 +13,10 @@ export default function ApiHelloDemo() {
     setPending(true);
     setError(null);
     try {
-      const res = await fetch("/api/hello");
-      setApiResult(JSON.stringify(await res.json(), null, 2));
+      // apiFetch propagates network rejections and throws ApiError on non-ok —
+      // for this demo both cases collapse to the same "failed to reach" message.
+      const data = await apiFetch<unknown>("/api/hello");
+      setApiResult(JSON.stringify(data, null, 2));
     } catch {
       setApiResult(null);
       setError("Failed to reach /api/hello.");

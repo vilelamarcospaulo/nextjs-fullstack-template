@@ -24,7 +24,7 @@ describe("SignInButton", () => {
     expect(btn.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
   });
 
-  it("click calls signIn.social once with { provider: 'google', callbackURL: '/' }", async () => {
+  it("click calls signIn.social once with { provider: 'google', callbackURL: '/' } (default provider)", async () => {
     const user = userEvent.setup();
     render(<SignInButton />);
     await user.click(
@@ -33,6 +33,19 @@ describe("SignInButton", () => {
     expect(signIn.social).toHaveBeenCalledOnce();
     expect(signIn.social).toHaveBeenCalledWith({
       provider: "google",
+      callbackURL: "/",
+    });
+  });
+
+  it("passes an explicit provider prop through to signIn.social", async () => {
+    const user = userEvent.setup();
+    render(<SignInButton provider="github" />);
+    await user.click(
+      screen.getByRole("button", { name: /sign in with google/i }),
+    );
+    expect(signIn.social).toHaveBeenCalledOnce();
+    expect(signIn.social).toHaveBeenCalledWith({
+      provider: "github",
       callbackURL: "/",
     });
   });

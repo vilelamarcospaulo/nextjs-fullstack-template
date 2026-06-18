@@ -1,17 +1,14 @@
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
+import { getSession } from "@/lib/session";
 import { getProfile } from "@/internal/use_case/profile";
 import ProfileForm, { type ProfileFormInitial } from "./profile-form";
 
-// Render on every request so the form always shows the freshest DB values
-// (same pattern as the home page).
-export const dynamic = "force-dynamic";
-
 // Server Component: reads the session + profile directly so the form hydrates
 // with the correct values on first paint (no self-fetch round-trip).
+// getSession() calls headers() internally, which opts this route into dynamic
+// rendering — no need for `export const dynamic = "force-dynamic"`.
 export default async function ProfilePage() {
-  const session = await auth.api.getSession({ headers: await headers() });
+  const session = await getSession();
 
   // Guard: unauthenticated visitors land back on the home page.
   if (!session) {

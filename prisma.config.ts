@@ -7,6 +7,9 @@ export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
     path: "prisma/migrations",
+    // Run after `prisma migrate dev` / `prisma migrate reset`. Node >= 23.6
+    // strips TypeScript types natively, so no tsx/ts-node dependency is needed.
+    seed: "node prisma/seed.ts",
   },
   datasource: {
     url: process.env["DATABASE_URL"],

@@ -17,6 +17,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { apiFetch, ApiError, AuthError } from "@/lib/api-client";
+import type { ProfileView } from "@/types/api";
 
 type FieldErrors = Partial<Record<Field, string>>;
 
@@ -65,52 +67,48 @@ export default function ProfileForm({ initial, email }: Props) {
 
     setPending(true);
     try {
-      const res = await fetch("/api/profile", {
+      const view = await apiFetch<ProfileView>("/api/profile", {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
       });
 
-      const json = await res.json();
-
-      if (res.ok) {
-        // Re-sync local state from what the server persisted (canonical values).
-        // birthdate already arrives as a YYYY-MM-DD string — assign it directly.
-        // Re-parsing through new Date(...).toISOString() would shift it a day in
-        // UTC+ timezones, so don't.
-        setName(json.name ?? "");
-        setImage(json.image ?? "");
-        setBirthdate(json.birthdate ?? "");
-        setBio(json.bio ?? "");
-        setLocation(json.location ?? "");
-        toast.success("Profile saved.");
-        // Refresh server components (home page header re-reads name/image).
-        router.refresh();
-      } else if (res.status === 400) {
+      // Re-sync local state from what the server persisted (canonical values).
+      // birthdate already arrives as a YYYY-MM-DD string — assign it directly.
+      // Re-parsing through new Date(...).toISOString() would shift it a day in
+      // UTC+ timezones, so don't.
+      setName(view.name ?? "");
+      setImage(view.image ?? "");
+      setBirthdate(view.birthdate ?? "");
+      setBio(view.bio ?? "");
+      setLocation(view.location ?? "");
+      toast.success("Profile saved.");
+      // Refresh server components (home page header re-reads name/image).
+      router.refresh();
+    } catch (err) {
+      if (err instanceof AuthError) {
+        // Session expired between page load and submit — retrying won't help;
+        // send them back to the home page to sign in again.
+        router.push("/");
+      } else if (err instanceof ApiError && err.status === 400) {
         // Server errors are the source of truth — render them inline.
         const serverErrors: FieldErrors = {};
 
-        for (const [key, msg] of Object.entries(
-          json.errors as Record<string, string>,
-        )) {
+        for (const [key, msg] of Object.entries(err.errors)) {
           if (key === "_body" || key === "_auth") {
             // Non-field errors go to a toast.
-            toast.error(msg as string);
+            toast.error(msg);
           } else {
             serverErrors[key as Field] = msg;
           }
         }
 
         setFieldErrors(serverErrors);
-      } else if (res.status === 401) {
-        // Session expired between page load and submit — retrying won't help;
-        // send them back to the home page to sign in again.
-        router.push("/");
-      } else {
+      } else if (err instanceof ApiError) {
         toast.error("Something went wrong. Please try again.");
+      } else {
+        toast.error("Network error. Please check your connection.");
       }
-    } catch {
-      toast.error("Network error. Please check your connection.");
     } finally {
       setPending(false);
     }

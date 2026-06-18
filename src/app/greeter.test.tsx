@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { GreetingResult } from "@/app/actions";
 import { generateGreeting } from "@/app/actions";
 import Greeter from "./greeter";
 
@@ -37,9 +38,11 @@ describe("Greeter", () => {
 
   it("submit calls generateGreeting once with the typed name and renders the result", async () => {
     const user = userEvent.setup();
-    mockGenerateGreeting.mockResolvedValue(
-      "Hello, Alice — generated on the server at 2026-01-01T00:00:00.000Z.",
-    );
+    const okResult: GreetingResult = {
+      ok: true,
+      data: "Hello, Alice — generated on the server at 2026-01-01T00:00:00.000Z.",
+    };
+    mockGenerateGreeting.mockResolvedValue(okResult);
 
     render(<Greeter />);
 
@@ -58,8 +61,8 @@ describe("Greeter", () => {
   it("shows pending label and disabled button while action is unresolved, then re-enables", async () => {
     const user = userEvent.setup();
 
-    let resolve: (value: string) => void;
-    const deferred = new Promise<string>((res) => {
+    let resolve: (value: GreetingResult) => void;
+    const deferred = new Promise<GreetingResult>((res) => {
       resolve = res;
     });
     mockGenerateGreeting.mockReturnValue(deferred);
@@ -74,7 +77,7 @@ describe("Greeter", () => {
     expect(btn).toBeDisabled();
 
     // Resolve
-    resolve!("Hello, Bob — done.");
+    resolve!({ ok: true, data: "Hello, Bob — done." });
 
     await waitFor(() =>
       expect(
@@ -86,8 +89,8 @@ describe("Greeter", () => {
   it("submitting again with a new name replaces the previous result", async () => {
     const user = userEvent.setup();
     mockGenerateGreeting
-      .mockResolvedValueOnce("Hello, First.")
-      .mockResolvedValueOnce("Hello, Second.");
+      .mockResolvedValueOnce({ ok: true, data: "Hello, First." })
+      .mockResolvedValueOnce({ ok: true, data: "Hello, Second." });
 
     render(<Greeter />);
 
@@ -103,5 +106,34 @@ describe("Greeter", () => {
     await screen.findByText("Hello, Second.");
 
     expect(screen.queryByText("Hello, First.")).not.toBeInTheDocument();
+  });
+
+  it("unauthenticated result renders sign-in prompt and no <pre>", async () => {
+    const user = userEvent.setup();
+    const unauthResult: GreetingResult = { ok: false, error: "unauthenticated" };
+    mockGenerateGreeting.mockResolvedValue(unauthResult);
+
+    render(<Greeter />);
+
+    await user.click(screen.getByRole("button", { name: "Run Server Action" }));
+
+    await screen.findByText(/sign in/i);
+    expect(document.querySelector("pre")).not.toBeInTheDocument();
+  });
+
+  it("generic error result renders fallback error message and no <pre>", async () => {
+    const user = userEvent.setup();
+    const errResult: GreetingResult = {
+      ok: false,
+      error: "Name must be 100 characters or fewer.",
+    };
+    mockGenerateGreeting.mockResolvedValue(errResult);
+
+    render(<Greeter />);
+
+    await user.click(screen.getByRole("button", { name: "Run Server Action" }));
+
+    await screen.findByText(/something went wrong/i);
+    expect(document.querySelector("pre")).not.toBeInTheDocument();
   });
 });

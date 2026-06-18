@@ -1,6 +1,5 @@
-import { headers } from "next/headers";
 import Link from "next/link";
-import { auth } from "@/lib/auth";
+import { getSession } from "@/lib/session";
 import { SignInButton } from "./auth-buttons";
 import Greeter from "./greeter";
 import ApiHelloDemo from "./api-hello-demo";
@@ -14,10 +13,16 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-export const dynamic = "force-dynamic";
+// NOTE: `export const dynamic = "force-dynamic"` is NOT needed here.
+// This page calls getSession() which invokes headers(), making it a
+// request-time API — Next.js automatically opts the route into dynamic
+// rendering. Only add force-dynamic explicitly when you need to bypass
+// the static pre-render for a route that would otherwise be statically
+// optimised (e.g. no request-time APIs but you still want per-request
+// freshness). Blanket-applying it disables caching unnecessarily.
 
 export default async function Home() {
-  const session = await auth.api.getSession({ headers: await headers() });
+  const session = await getSession();
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-12 px-4 py-16 sm:px-6">

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { signIn } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
+import type { SocialProvider } from "better-auth";
 
 function GoogleIcon() {
   return (
@@ -32,13 +33,18 @@ function GoogleIcon() {
   );
 }
 
-export function SignInButton() {
+interface SignInButtonProps {
+  /** OAuth social provider to use. Defaults to "google". */
+  provider?: SocialProvider;
+}
+
+export function SignInButton({ provider = "google" }: SignInButtonProps) {
   const [pending, setPending] = useState(false);
 
   async function handleSignIn() {
     setPending(true);
     try {
-      await signIn.social({ provider: "google", callbackURL: "/" });
+      await signIn.social({ provider, callbackURL: "/" });
     } finally {
       // Reset so a cancelled/failed sign-in doesn't leave the button stuck
       // disabled. (On success the OAuth redirect navigates away first.)
