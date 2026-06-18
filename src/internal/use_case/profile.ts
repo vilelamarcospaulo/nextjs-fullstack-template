@@ -2,11 +2,8 @@
 // data store (Prisma). No framework imports — the boundary resolves the session
 // and passes a userId in; these functions never touch headers or Response.
 import { prisma } from "@/lib/prisma";
-import {
-  validateProfile,
-  formatDateOnly,
-  type Field,
-} from "@/internal/domain/profile";
+import { inputToProfile, type Field } from "@/internal/domain/profile";
+import { dateToStr } from "@/utils/date";
 
 // The serialised shape returned to the boundary: a user's display fields merged
 // with their optional 1-1 profile. birthdate is a YYYY-MM-DD string (or null).
@@ -32,7 +29,8 @@ const userWithProfile = {
 } as const;
 
 // Flatten a user (+ optional profile) into the serialised view. birthdate is
-// stored as a Date but emitted as YYYY-MM-DD (local components — see domain).
+// stored as a Date but emitted as YYYY-MM-DD (a presentation concern, hence the
+// dateToStr util and not the domain).
 function toView(user: {
   name: string;
   email: string;
@@ -48,7 +46,7 @@ function toView(user: {
     email: user.email,
     image: user.image,
     birthdate: user.profile?.birthdate
-      ? formatDateOnly(user.profile.birthdate)
+      ? dateToStr(user.profile.birthdate)
       : null,
     bio: user.profile?.bio ?? null,
     location: user.profile?.location ?? null,
@@ -70,7 +68,7 @@ export async function updateProfile(
   userId: string,
   input: Record<string, unknown>,
 ): Promise<UpdateProfileResult> {
-  const result = validateProfile(input);
+  const result = inputToProfile(input);
   if (!result.ok) return { ok: false, errors: result.errors };
 
   const { name, image, birthdate, bio, location } = result.value;

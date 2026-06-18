@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { validateProfile, type Field } from "@/internal/domain/profile";
+import { inputToProfile, type Field } from "@/internal/domain/profile";
 
 type FieldErrors = Partial<Record<Field, string>>;
 
@@ -63,7 +63,7 @@ export default function ProfileForm({ initial, email }: Props) {
     const payload = { name, image, birthdate, bio, location };
 
     // Client-side validation: gives instant feedback without a round-trip.
-    const validation = validateProfile(payload);
+    const validation = inputToProfile(payload);
     if (!validation.ok) {
       setFieldErrors(validation.errors);
       return;
@@ -252,11 +252,10 @@ export default function ProfileForm({ initial, email }: Props) {
           </label>
           {/* Counter turns red when the user hits the 280-char limit. */}
           <span
-            className={`text-xs tabular-nums ${
-              bio.length >= 280
+            className={`text-xs tabular-nums ${bio.length >= 280
                 ? "text-red-600 dark:text-red-400"
                 : "opacity-50"
-            }`}
+              }`}
             aria-live="polite"
           >
             {bio.length}/280
