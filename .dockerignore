@@ -1,0 +1,54 @@
+# Dependencies — reinstalled inside the image
+node_modules
+
+# Next.js build output — produced inside the image
+.next
+
+# Version control
+.git
+.gitignore
+
+# Test artefacts
+coverage
+test-results
+*.snap
+
+# SQLite database files — must never enter the build context
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Environment / secrets — never bake into the image
+.env
+.env.*
+!.env.example
+
+# Docker files themselves (no need to COPY into the image)
+Dockerfile
+docker-compose.yml
+docker-compose.*.yml
+
+# CI / tooling config
+.github
+.claude
+
+# TypeScript incremental build info
+*.tsbuildinfo
+
+# Editor / OS noise
+.DS_Store
+*.swp
+*.swo
+.idea
+.vscode
+
+# Docs
+README.md
+AGENTS.md
+CLAUDE.md
+
+# Generated Prisma client is gitignored and absent; it is regenerated in-build.
+# Do NOT add src/generated/prisma here — if someone accidentally generates it
+# locally it should be ignored anyway; the build always reruns prisma generate.
+src/generated

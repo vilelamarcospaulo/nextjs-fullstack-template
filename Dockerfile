@@ -1,0 +1,137 @@
+# syntax=docker/dockerfile:1.7
+# =============================================================================
+# Stage 1 — deps
+# Install all dependencies (including devDeps) with native build tooling so
+# that better-sqlite3 compiles its glibc-linked .node binary. NODE_ENV is
+# intentionally NOT set to "production" here — setting it would cause npm ci to
+# skip devDependencies, which breaks `next build` (needs TypeScript, next, etc).
+# =============================================================================
+FROM node:24-bookworm-slim AS deps
+
+WORKDIR /app
+
+# Build toolchain required by better-sqlite3 native compilation.
+# python3, make, g++ are removed from the runtime stage automatically because
+# this is a multi-stage build — they never reach the final image.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends python3 make g++ && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy manifests first for optimal layer caching.
+# npm ci requires both files; fall back to npm install only if the lockfile is
+# out of sync (the || guard handles a stale lockfile without breaking the build).
+COPY package.json package-lock.json ./
+
+# Install with an optional private-registry credential.
+#   This repo's package-lock.json resolves every package from a private registry
+#   (Nubank CodeArtifact), so the install needs an authenticated .npmrc. It is
+#   provided as a BuildKit secret mounted only for this layer — the token never
+#   lands in an image layer or the build cache. Build with:
+#     docker build --secret id=npmrc,src=$HOME/.npmrc ...
+#   required=false keeps the template portable: if the lockfile points at the
+#   public npm registry instead, omit the secret and this still works.
+RUN --mount=type=secret,id=npmrc,target=/root/.npmrc,required=false \
+    npm ci --include=dev || npm install --no-audit --no-fund
+
+# =============================================================================
+# Stage 2 — builder
+# Generate the Prisma client, then run next build. The Prisma client emits
+# TypeScript/JS into src/generated/prisma (no Rust engine binary for Prisma 7
+# with a driver adapter). It must be generated AFTER source is copied and
+# BEFORE next build so the import at build time resolves.
+# =============================================================================
+FROM deps AS builder
+
+WORKDIR /app
+
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Build-time-only placeholder env. src/lib/env.ts validates these five vars at
+# import time and throws if any is empty; `next build` imports them while
+# collecting page data for the auth route (/api/auth/[...all]), so the build
+# fails without them. These are throwaway non-secrets that exist ONLY in this
+# builder stage (discarded in the final image) — the runner receives the real
+# values at runtime from docker-compose / the container env. Mirrors the dummy
+# values used by the CI build job.
+ENV DATABASE_URL="file:./build-placeholder.db" \
+    BETTER_AUTH_SECRET="build-time-dummy-secret-not-used-at-runtime" \
+    BETTER_AUTH_URL="http://localhost:3000" \
+    GOOGLE_CLIENT_ID="build-time-dummy-client-id" \
+    GOOGLE_CLIENT_SECRET="build-time-dummy-client-secret"
+
+# Copy the full source tree. node_modules is already present from the deps
+# stage. The .dockerignore ensures node_modules, .next, secrets, and test
+# artefacts are excluded from the build context.
+COPY . .
+
+# Generate the Prisma client into src/generated/prisma.
+# prisma.config.ts imports dotenv/config so DATABASE_URL does not need to be
+# set at build time — prisma generate does not connect to the database.
+RUN npx prisma generate
+
+# Build the Next.js application. output: "standalone" is already configured in
+# next.config.ts, so this produces:
+#   .next/standalone  — server.js + traced node_modules
+#   .next/static      — hashed static assets
+RUN npm run build
+
+# =============================================================================
+# Stage 3 — migrator  (target: migrator)
+# Lightweight one-shot stage used by a Compose service to run
+# `prisma migrate deploy` before the app starts. It needs:
+#   - the prisma CLI (present in node_modules from the deps stage)
+#   - prisma/schema.prisma, prisma/migrations/, prisma.config.ts
+#   - DATABASE_URL supplied at runtime via environment / Compose
+# The generated client is included because prisma.config.ts is a TS file that
+# prisma itself evaluates; having src/generated/prisma present avoids any
+# resolution warnings even though migrate deploy only uses the schema.
+# =============================================================================
+FROM node:24-bookworm-slim AS migrator
+
+WORKDIR /app
+
+# Copy everything produced by the builder (source + node_modules with prisma
+# CLI + generated client). We only strictly need the prisma-related files and
+# node_modules, but copying the full tree from builder keeps the layer simple
+# and avoids a fragile selective COPY that could miss a file.
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
+COPY --from=builder /app/src/generated/prisma ./src/generated/prisma
+
+CMD ["npx", "prisma", "migrate", "deploy"]
+
+# =============================================================================
+# Stage 4 — runner  (target: runner)
+# Minimal production runtime. No build tooling, no devDependencies — the
+# standalone output already contains only the traced runtime node_modules
+# (including the compiled better_sqlite3.node binary). Runs as the unprivileged
+# `node` user that ships in the official image.
+# =============================================================================
+FROM node:24-bookworm-slim AS runner
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Bind to all interfaces (not to the container hostname Docker injects) and
+# expose the canonical port. Next standalone server.js reads both env vars.
+ENV HOSTNAME=0.0.0.0
+ENV PORT=3000
+
+EXPOSE 3000
+
+# Copy standalone output (includes server.js + traced node_modules with the
+# compiled better_sqlite3.node), static assets, and public directory.
+COPY --chown=node:node --from=builder /app/.next/standalone ./
+COPY --chown=node:node --from=builder /app/.next/static ./.next/static
+COPY --chown=node:node --from=builder /app/public ./public
+
+USER node
+
+# Simple Node-based health check — avoids a curl/wget dependency in slim.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD node -e "require('http').get('http://127.0.0.1:3000/', (r) => process.exit(r.statusCode >= 200 && r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"
+
+CMD ["node", "server.js"]
