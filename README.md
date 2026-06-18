@@ -22,30 +22,39 @@ This project uses [`next/font`](https://nextjs.org/docs/app/building-your-applic
 
 ## Docker
 
-A production-style container setup ships with the repo:
+The repo includes two deployment setups (see `deploy/README.md` for details):
 
-- `Dockerfile` — multi-stage build producing Next's [`standalone`](https://nextjs.org/docs/app/api-reference/config/next-config-js/output) server. Targets: `runner` (the slim app image) and `migrator` (one-shot `prisma migrate deploy`).
-- `docker-compose.yml` — runs migrations, then the app, wired to an OpenTelemetry Collector and Jaeger for traces.
-- `otel-collector-config.yaml` — OTLP in → Jaeger (traces) + debug (traces/logs).
+### Local Development
 
-### Run the stack
+Run a telemetry stack (OpenTelemetry Collector + Jaeger) locally alongside the app on your host:
 
 ```bash
-cp .env.docker.example .env.docker   # then fill in BETTER_AUTH_SECRET and the Google OAuth creds
-docker compose up --build
+docker compose -f deploy/local/docker-compose.yaml up -d
 ```
 
-- App: <http://localhost:3000>
-- Jaeger UI: <http://localhost:16686> (service `content-generator`)
-- Collector OTLP: `4318` (HTTP) / `4317` (gRPC)
+Then set in `.env.local` (or export):
 
-`migrate` runs `prisma migrate deploy` against the shared `appdata` volume and exits; `app` starts only after it succeeds. Telemetry is opt-in and enabled here by compose setting `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318`.
+```bash
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+OTEL_SERVICE_NAME=content-generator
+```
 
-> **Private registry:** `package-lock.json` resolves from Nubank CodeArtifact, so the build needs an authenticated `~/.npmrc`, passed as a BuildKit secret (never baked into a layer). Compose wires this automatically via the top-level `npmrc` secret. For a bare `docker build`, pass it yourself and make sure your token is fresh (CodeArtifact tokens expire ~12h):
->
-> ```bash
-> docker build --secret id=npmrc,src=$HOME/.npmrc --target runner -t content-generator .
-> ```
+Start the app:
+
+```bash
+npm run dev
+```
+
+View traces at <http://localhost:16686> (service `content-generator`).
+
+### Production
+
+A full VPS stack with nginx (Let's Encrypt TLS), certbot, migrations, app, and telemetry. See `deploy/production/.env.example` and `deploy/production/init-letsencrypt.sh` for setup.
+
+### Shared
+
+- `Dockerfile` — multi-stage build with targets `runner` (app) and `migrator` (migrations).
+- Private registry (`~/.npmrc`) — passed as a BuildKit secret at build time (token expires ~12h; refresh before building if `npm ci` fails with E401).
 
 ## Learn More
 

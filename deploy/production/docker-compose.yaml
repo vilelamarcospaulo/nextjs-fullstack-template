@@ -1,0 +1,205 @@
+# =============================================================================
+# Production VPS stack — deploy/production/docker-compose.yaml
+#
+# Differences from the root docker-compose.yml (local dev):
+#   - nginx reverse proxy with Let's Encrypt TLS (certbot) in front of the app
+#   - Port 3000 is NOT published to the host; nginx reaches app over appnet
+#   - Ports 4317/4318 (OTEL collector) are NOT published; internal only
+#   - Port 16686 (Jaeger UI) is NOT published; access via SSH tunnel:
+#       ssh -L 16686:localhost:16686 user@vps
+#   - BETTER_AUTH_URL is set to https://${DOMAIN} (public TLS URL)
+#   - Requires a .env file alongside this compose file (see .env.example)
+#   - Secrets: ${HOME}/.npmrc must exist on the VPS for private-registry builds
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # migrate — one-shot Prisma migration runner.
+  # Runs `prisma migrate deploy` against the SQLite database and exits.
+  # The app service waits for this to complete successfully before starting.
+  # ---------------------------------------------------------------------------
+  migrate:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      target: migrator
+      secrets:
+        - npmrc
+    env_file: .env
+    environment:
+      # SQLite database lives on the shared appdata volume; override any value
+      # that might be set in .env so the path is always consistent.
+      DATABASE_URL: "file:/data/app.db"
+    volumes:
+      - appdata:/data
+    restart: "no"
+    networks:
+      - appnet
+
+  # ---------------------------------------------------------------------------
+  # app — Next.js standalone server (port 3000, non-root node user).
+  # Not published to the host — nginx proxies to it over the internal appnet.
+  # ---------------------------------------------------------------------------
+  app:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      target: runner
+      secrets:
+        - npmrc
+    env_file: .env
+    environment:
+      # SQLite: always use the volume-mounted path regardless of .env content.
+      DATABASE_URL: "file:/data/app.db"
+      HOSTNAME: "0.0.0.0"
+      PORT: "3000"
+      NODE_ENV: production
+      # OTEL: the app opts in when this endpoint is set; the collector is
+      # reachable by its service name over the internal appnet.
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4318"
+      OTEL_SERVICE_NAME: content-generator
+      OTEL_SERVICE_VERSION: "0.1.0"
+      LOG_LEVEL: info
+      # Must match the public HTTPS domain used in Google OAuth redirect URIs:
+      #   https://${DOMAIN}/api/auth/callback/google
+      BETTER_AUTH_URL: "https://${DOMAIN}"
+    # Port 3000 is intentionally NOT published to the host.
+    # nginx reaches it over appnet. expose is informational only.
+    expose:
+      - "3000"
+    volumes:
+      - appdata:/data
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      otel-collector:
+        condition: service_started
+    networks:
+      - appnet
+    # Node-based health check — no curl/wget required in bookworm-slim.
+    # Mirrors the Dockerfile HEALTHCHECK; compose-level override gives
+    # slightly more generous start_period for production cold starts.
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "require('http').get('http://127.0.0.1:3000/', (r) => process.exit(r.statusCode >= 200 && r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ---------------------------------------------------------------------------
+  # otel-collector — receives OTLP traces/logs from the app (grpc + http)
+  # and forwards them to Jaeger. Not exposed to the host in production.
+  # Pinned version: bump deliberately, re-checking config schema for changes.
+  # ---------------------------------------------------------------------------
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.154.0
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    # 4317 (gRPC) and 4318 (HTTP) are intentionally NOT published to the host.
+    # The app reaches the collector by service name over appnet.
+    depends_on:
+      jaeger:
+        condition: service_started
+    networks:
+      - appnet
+
+  # ---------------------------------------------------------------------------
+  # jaeger — distributed tracing backend and UI.
+  # Port 16686 is NOT published to the host in production.
+  # Access the Jaeger UI via an SSH tunnel from your local machine:
+  #   ssh -L 16686:localhost:16686 user@vps
+  # then open http://localhost:16686 in your browser.
+  # ---------------------------------------------------------------------------
+  jaeger:
+    image: jaegertracing/all-in-one:1.76.0
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    # No ports published — internal tracing only in production.
+    networks:
+      - appnet
+
+  # ---------------------------------------------------------------------------
+  # nginx — TLS termination and reverse proxy.
+  # Publishes 80 (HTTP→HTTPS redirect + ACME challenge) and 443 (HTTPS).
+  # The official nginx image runs envsubst over templates/*.template files
+  # at startup, writing rendered configs to /etc/nginx/conf.d/. Only env
+  # vars that are actually present in the container environment are replaced
+  # (i.e. only DOMAIN); nginx runtime vars like $host are left untouched.
+  # The reload loop picks up renewed certificates every 6 hours without
+  # requiring a full container restart.
+  # ---------------------------------------------------------------------------
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/templates:/etc/nginx/templates:ro
+      - ./nginx/options-ssl-nginx.conf:/etc/nginx/options-ssl-nginx.conf:ro
+      - certbot-etc:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    environment:
+      # DOMAIN is substituted into app.conf.template at container start.
+      # Nginx runtime vars ($host, $remote_addr, etc.) are NOT in the
+      # environment, so envsubst leaves them intact — they are resolved by
+      # nginx itself at request time.
+      DOMAIN: "${DOMAIN}"
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - appnet
+    # Reload nginx every 6 hours in the background so that Let's Encrypt
+    # certificate renewals (handled by certbot) are picked up automatically
+    # without a container restart. $${!} is compose-escaped (renders as ${!}).
+    command: '/bin/sh -c ''while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g "daemon off;"'''
+
+  # ---------------------------------------------------------------------------
+  # certbot — obtains and renews Let's Encrypt certificates via the webroot
+  # challenge. Stores certs in certbot-etc (shared with nginx). Run
+  # init-letsencrypt.sh once before starting the full stack.
+  # ---------------------------------------------------------------------------
+  certbot:
+    image: certbot/certbot
+    volumes:
+      - certbot-etc:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    # Attempt renewal every 12 hours; certbot only acts if the cert is within
+    # 30 days of expiry. $${!} is compose-escaped (renders as ${!}).
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot; sleep 12h & wait $${!}; done'"
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  # Shared SQLite database between migrate and app services.
+  appdata:
+  # Let's Encrypt certificate store shared between certbot and nginx.
+  certbot-etc:
+  # ACME http-01 challenge webroot shared between certbot and nginx.
+  certbot-www:
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  # Single internal bridge network; all services communicate by service name.
+  # Nothing is reachable from the host except through nginx (80/443).
+  appnet:
+    driver: bridge
+
+# =============================================================================
+# Secrets
+# =============================================================================
+# Private-registry credential consumed only during `docker compose build`
+# via a BuildKit secret mount in the Dockerfile. Never lands in an image layer.
+# The token in ~/.npmrc may expire (~12h for CodeArtifact) — refresh before
+# rebuilding if npm ci returns E401.
+secrets:
+  npmrc:
+    file: ${HOME}/.npmrc

@@ -33,7 +33,10 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 !.env.example
-!.env.docker.example
+
+# production deployment secrets
+deploy/production/.env
+deploy/**/.env
 
 # vercel
 .vercel

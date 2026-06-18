@@ -56,7 +56,7 @@ export default defineConfig({
             BETTER_AUTH_SECRET: "auth_secret",
             BETTER_AUTH_URL: "http://localhost:3000",
             GOOGLE_CLIENT_ID: "google_client_id",
-            GOOGLE_CLIENT_SECRET: "google_client_secret"
+            GOOGLE_CLIENT_SECRET: "google_client_secret",
           },
         },
       },

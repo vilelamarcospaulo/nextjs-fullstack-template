@@ -1,0 +1,80 @@
+# nginx configuration template for the production VPS stack.
+#
+# envsubst substitution note:
+#   The official nginx Docker image runs envsubst at container startup,
+#   replacing only variables that are present in the container environment.
+#   We pass DOMAIN (and only DOMAIN) via docker-compose.yaml, so ${DOMAIN}
+#   is replaced with the real hostname. All nginx runtime variables
+#   ($host, $scheme, $remote_addr, $proxy_add_x_forwarded_for,
+#   $request_uri, $http_upgrade) are NOT in the environment and are
+#   therefore left as-is by envsubst — nginx itself resolves them at
+#   request time. No escaping of those variables is needed.
+
+# ---------------------------------------------------------------------------
+# HTTP server — ACME challenge + redirect to HTTPS
+# ---------------------------------------------------------------------------
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${DOMAIN} www.${DOMAIN};
+
+    # Let's Encrypt webroot ACME http-01 challenge.
+    # certbot writes tokens here; nginx serves them for domain validation.
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    # Redirect all other HTTP traffic to HTTPS.
+    # $host and $request_uri are nginx runtime vars — not substituted by
+    # envsubst; they are resolved by nginx on each request as intended.
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# ---------------------------------------------------------------------------
+# HTTPS server — TLS termination + reverse proxy to the app
+# ---------------------------------------------------------------------------
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name ${DOMAIN};
+
+    # Certificate paths are written by certbot and populated by init-letsencrypt.sh.
+    ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+
+    # Shared Mozilla intermediate TLS parameters (ciphers, protocols, session cache).
+    include /etc/nginx/options-ssl-nginx.conf;
+
+    # Recommended security headers.
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+    add_header X-Content-Type-Options    "nosniff"                                      always;
+    add_header X-Frame-Options           "SAMEORIGIN"                                   always;
+    add_header Referrer-Policy           "strict-origin-when-cross-origin"              always;
+
+    # Proxy to the Next.js app.
+    # app:3000 is the internal Docker service name — reachable over appnet only.
+    location / {
+        proxy_pass         http://app:3000;
+        proxy_http_version 1.1;
+
+        # Standard forwarding headers so the app sees the real client info.
+        # These are nginx runtime vars — resolved by nginx, not envsubst.
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # WebSocket upgrade support (Next.js HMR / future WS routes).
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        # Allow slow server-side rendering pages some breathing room.
+        proxy_read_timeout 60s;
+
+        # Pass the body through unchanged (important for POST/PUT).
+        proxy_request_buffering off;
+    }
+}
