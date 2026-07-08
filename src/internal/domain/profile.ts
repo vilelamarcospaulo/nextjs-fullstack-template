@@ -51,7 +51,7 @@ export function inputToProfile(
   if (rawBirthdate.length > 0) {
     // strToDate handles parsing + real-date check; the past/range rule is ours.
     const parsed = strToDate(rawBirthdate);
-    if (!parsed || parsed.getFullYear() < 1900 || parsed > new Date()) {
+    if (!parsed || parsed.getUTCFullYear() < 1900 || parsed > new Date()) {
       errors.birthdate = "Birthdate must be a real date in the past.";
     } else {
       birthdate = parsed;

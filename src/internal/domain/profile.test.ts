@@ -19,9 +19,9 @@ describe("inputToProfile", () => {
       expect(result.value.name).toBe("Alice");
       expect(result.value.image).toBe("https://x.com/a.png");
       expect(result.value.birthdate).not.toBeNull();
-      expect(result.value.birthdate!.getFullYear()).toBe(1990);
-      expect(result.value.birthdate!.getMonth()).toBe(5);
-      expect(result.value.birthdate!.getDate()).toBe(15);
+      expect(result.value.birthdate!.getUTCFullYear()).toBe(1990);
+      expect(result.value.birthdate!.getUTCMonth()).toBe(5);
+      expect(result.value.birthdate!.getUTCDate()).toBe(15);
       expect(result.value.bio).toBe("Hello");
       expect(result.value.location).toBe("NYC");
     });

@@ -1,21 +1,15 @@
 # syntax=docker/dockerfile:1.7
 # =============================================================================
 # Stage 1 — deps
-# Install all dependencies (including devDeps) with native build tooling so
-# that better-sqlite3 compiles its glibc-linked .node binary. NODE_ENV is
-# intentionally NOT set to "production" here — setting it would cause npm ci to
-# skip devDependencies, which breaks `next build` (needs TypeScript, next, etc).
+# Install all dependencies (including devDeps). The `pg` driver used by
+# @prisma/adapter-pg is pure JS (speaks the Postgres wire protocol over TCP),
+# so no native build toolchain is required here. NODE_ENV is intentionally NOT
+# set to "production" here — setting it would cause npm ci to skip
+# devDependencies, which breaks `next build` (needs TypeScript, next, etc).
 # =============================================================================
 FROM node:24-bookworm-slim AS deps
 
 WORKDIR /app
-
-# Build toolchain required by better-sqlite3 native compilation.
-# python3, make, g++ are removed from the runtime stage automatically because
-# this is a multi-stage build — they never reach the final image.
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends python3 make g++ && \
-    rm -rf /var/lib/apt/lists/*
 
 # Copy manifests first for optimal layer caching.
 # npm ci requires both files; fall back to npm install only if the lockfile is
@@ -53,7 +47,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # builder stage (discarded in the final image) — the runner receives the real
 # values at runtime from docker-compose / the container env. Mirrors the dummy
 # values used by the CI build job.
-ENV DATABASE_URL="file:./build-placeholder.db" \
+ENV DATABASE_URL="postgresql://build:build@localhost:5432/build_placeholder" \
     BETTER_AUTH_SECRET="build-time-dummy-secret-not-used-at-runtime" \
     BETTER_AUTH_URL="http://localhost:3000" \
     GOOGLE_CLIENT_ID="build-time-dummy-client-id" \
@@ -105,8 +99,9 @@ CMD ["npx", "prisma", "migrate", "deploy"]
 # Stage 4 — runner  (target: runner)
 # Minimal production runtime. No build tooling, no devDependencies — the
 # standalone output already contains only the traced runtime node_modules
-# (including the compiled better_sqlite3.node binary). Runs as the unprivileged
-# `node` user that ships in the official image.
+# needed to serve the app (the `pg` driver connects to Postgres over TCP, no
+# native binary involved). Runs as the unprivileged `node` user that ships in
+# the official image.
 # =============================================================================
 FROM node:24-bookworm-slim AS runner
 
@@ -122,8 +117,8 @@ ENV PORT=3000
 
 EXPOSE 3000
 
-# Copy standalone output (includes server.js + traced node_modules with the
-# compiled better_sqlite3.node), static assets, and public directory.
+# Copy standalone output (includes server.js + traced node_modules), static
+# assets, and public directory.
 COPY --chown=node:node --from=builder /app/.next/standalone ./
 COPY --chown=node:node --from=builder /app/.next/static ./.next/static
 COPY --chown=node:node --from=builder /app/public ./public

@@ -13,12 +13,6 @@ coverage
 test-results
 *.snap
 
-# SQLite database files — must never enter the build context
-*.db
-*.db-journal
-*.db-wal
-*.db-shm
-
 # Environment / secrets — never bake into the image
 .env
 .env.*

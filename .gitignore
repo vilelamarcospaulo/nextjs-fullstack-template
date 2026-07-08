@@ -45,10 +45,4 @@ deploy/**/.env
 *.tsbuildinfo
 next-env.d.ts
 
-# local sqlite database (Better Auth)
-*.db
-*.db-journal
-*.db-wal
-*.db-shm
-
 /src/generated/prisma

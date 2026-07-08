@@ -1,6 +1,6 @@
 // Integration-test DB helpers. Imports the SAME Prisma instance the app uses
 // (@/lib/prisma), so resets/seeds and the code under test share one connection
-// to the temp SQLite database provisioned in test/global-setup.ts.
+// to the throwaway Postgres database provisioned in test/global-setup.ts.
 import { prisma } from "@/lib/prisma";
 
 // Wipe every table between tests. Children (which carry FKs to user) go before

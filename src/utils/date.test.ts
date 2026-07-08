@@ -5,41 +5,41 @@ describe("strToDate", () => {
     it("parses a normal date", () => {
       const result = strToDate("2023-06-15");
       expect(result).not.toBeNull();
-      expect(result!.getFullYear()).toBe(2023);
-      expect(result!.getMonth()).toBe(5);
-      expect(result!.getDate()).toBe(15);
+      expect(result!.getUTCFullYear()).toBe(2023);
+      expect(result!.getUTCMonth()).toBe(5);
+      expect(result!.getUTCDate()).toBe(15);
     });
 
     it("parses a leap-year Feb 29", () => {
       const result = strToDate("2020-02-29");
       expect(result).not.toBeNull();
-      expect(result!.getFullYear()).toBe(2020);
-      expect(result!.getMonth()).toBe(1);
-      expect(result!.getDate()).toBe(29);
+      expect(result!.getUTCFullYear()).toBe(2020);
+      expect(result!.getUTCMonth()).toBe(1);
+      expect(result!.getUTCDate()).toBe(29);
     });
 
     it("parses Jan 31 (31-day month)", () => {
       const result = strToDate("2023-01-31");
       expect(result).not.toBeNull();
-      expect(result!.getFullYear()).toBe(2023);
-      expect(result!.getMonth()).toBe(0);
-      expect(result!.getDate()).toBe(31);
+      expect(result!.getUTCFullYear()).toBe(2023);
+      expect(result!.getUTCMonth()).toBe(0);
+      expect(result!.getUTCDate()).toBe(31);
     });
 
     it("parses the historical boundary 1900-01-01", () => {
       const result = strToDate("1900-01-01");
       expect(result).not.toBeNull();
-      expect(result!.getFullYear()).toBe(1900);
-      expect(result!.getMonth()).toBe(0);
-      expect(result!.getDate()).toBe(1);
+      expect(result!.getUTCFullYear()).toBe(1900);
+      expect(result!.getUTCMonth()).toBe(0);
+      expect(result!.getUTCDate()).toBe(1);
     });
 
     it("parses the far future 9999-01-01", () => {
       const result = strToDate("9999-01-01");
       expect(result).not.toBeNull();
-      expect(result!.getFullYear()).toBe(9999);
-      expect(result!.getMonth()).toBe(0);
-      expect(result!.getDate()).toBe(1);
+      expect(result!.getUTCFullYear()).toBe(9999);
+      expect(result!.getUTCMonth()).toBe(0);
+      expect(result!.getUTCDate()).toBe(1);
     });
   });
 
@@ -90,31 +90,31 @@ describe("strToDate", () => {
 
 describe("dateToStr", () => {
   it("serialises a mid-year date", () => {
-    expect(dateToStr(new Date(2023, 5, 15))).toBe("2023-06-15");
+    expect(dateToStr(new Date(Date.UTC(2023, 5, 15)))).toBe("2023-06-15");
   });
 
   it("pads single-digit month", () => {
-    expect(dateToStr(new Date(2023, 0, 5))).toBe("2023-01-05");
+    expect(dateToStr(new Date(Date.UTC(2023, 0, 5)))).toBe("2023-01-05");
   });
 
   it("pads single-digit day", () => {
-    expect(dateToStr(new Date(2023, 11, 9))).toBe("2023-12-09");
+    expect(dateToStr(new Date(Date.UTC(2023, 11, 9)))).toBe("2023-12-09");
   });
 
   it("handles Jan 1", () => {
-    expect(dateToStr(new Date(2023, 0, 1))).toBe("2023-01-01");
+    expect(dateToStr(new Date(Date.UTC(2023, 0, 1)))).toBe("2023-01-01");
   });
 
   it("handles Dec 31", () => {
-    expect(dateToStr(new Date(2023, 11, 31))).toBe("2023-12-31");
+    expect(dateToStr(new Date(Date.UTC(2023, 11, 31)))).toBe("2023-12-31");
   });
 
   it("handles leap-year Feb 29", () => {
-    expect(dateToStr(new Date(2020, 1, 29))).toBe("2020-02-29");
+    expect(dateToStr(new Date(Date.UTC(2020, 1, 29)))).toBe("2020-02-29");
   });
 
   it("handles historical boundary 1900-01-01", () => {
-    expect(dateToStr(new Date(1900, 0, 1))).toBe("1900-01-01");
+    expect(dateToStr(new Date(Date.UTC(1900, 0, 1)))).toBe("1900-01-01");
   });
 
   describe("round-trips", () => {
@@ -123,13 +123,13 @@ describe("dateToStr", () => {
     });
 
     it("dateToStr then strToDate returns non-null date equal to original", () => {
-      const original = new Date(2023, 5, 15);
+      const original = new Date(Date.UTC(2023, 5, 15));
       const str = dateToStr(original);
       const parsed = strToDate(str);
       expect(parsed).not.toBeNull();
-      expect(parsed!.getFullYear()).toBe(original.getFullYear());
-      expect(parsed!.getMonth()).toBe(original.getMonth());
-      expect(parsed!.getDate()).toBe(original.getDate());
+      expect(parsed!.getUTCFullYear()).toBe(original.getUTCFullYear());
+      expect(parsed!.getUTCMonth()).toBe(original.getUTCMonth());
+      expect(parsed!.getUTCDate()).toBe(original.getUTCDate());
     });
   });
 });

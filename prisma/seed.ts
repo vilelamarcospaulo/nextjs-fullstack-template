@@ -13,21 +13,20 @@
 // (and @default(now())) behavior on the models is honored.
 
 import "dotenv/config";
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client.ts";
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
   throw new Error(
     "DATABASE_URL is not set. Copy .env.example to .env and fill it in " +
-      '(e.g. DATABASE_URL="file:./dev.db").',
+      '(e.g. DATABASE_URL="postgresql://postgres:postgres@localhost:5432/app").',
   );
 }
 
 // Mirror the production adapter (src/lib/prisma.ts) so the seed talks to the
-// same SQLite file the app uses. When migrating to Postgres, swap this for
-// @prisma/adapter-pg exactly as documented in prisma/POSTGRES.md.
-const adapter = new PrismaBetterSqlite3({ url: DATABASE_URL });
+// same Postgres database the app uses.
+const adapter = new PrismaPg(DATABASE_URL);
 const prisma = new PrismaClient({ adapter });
 
 // Stable, recognizable demo identity. NOT a random id, so the upsert is a

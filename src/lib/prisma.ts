@@ -1,4 +1,4 @@
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/generated/prisma/client";
 import { env } from "@/lib/env";
 
@@ -9,23 +9,10 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 // Prisma 7 requires a driver adapter (the datasource URL is no longer read
-// from the schema). better-sqlite3 backs the local SQLite file.
+// from the schema). @prisma/adapter-pg pools connections to Postgres via `pg`.
 //
 // DATABASE_URL is sourced from the validated env module — no silent fallback.
-const adapter = new PrismaBetterSqlite3({
-  url: env.DATABASE_URL,
-});
-
-// ── Alternative: Postgres via @prisma/adapter-pg ─────────────────────────────
-// Switching from SQLite to Postgres requires both a new adapter AND schema /
-// migration changes (update the provider in prisma/schema.prisma and regenerate
-// the client — see README for the full data-layer checklist).
-//
-// import { PgAdapter } from "@prisma/adapter-pg";
-// import pg from "pg";
-// const pool = new pg.Pool({ connectionString: env.DATABASE_URL });
-// const adapter = new PgAdapter(pool);
-// ─────────────────────────────────────────────────────────────────────────────
+const adapter = new PrismaPg(env.DATABASE_URL);
 
 export const prisma = globalForPrisma.prisma ?? new PrismaClient({ adapter });
 
