@@ -15,7 +15,7 @@
 services:
   # ---------------------------------------------------------------------------
   # migrate — one-shot Prisma migration runner.
-  # Runs `prisma migrate deploy` against the SQLite database and exits.
+  # Runs `prisma migrate deploy` against Postgres and exits.
   # The app service waits for this to complete successfully before starting.
   # ---------------------------------------------------------------------------
   migrate:
@@ -26,12 +26,11 @@ services:
       secrets:
         - npmrc
     env_file: .env
-    environment:
-      # SQLite database lives on the shared appdata volume; override any value
-      # that might be set in .env so the path is always consistent.
-      DATABASE_URL: "file:/data/app.db"
-    volumes:
-      - appdata:/data
+    # DATABASE_URL is read from .env (postgresql://<user>:<pass>@postgres:5432/<db>).
+    # `postgres` is reachable by service name over appnet.
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: "no"
     networks:
       - appnet
@@ -48,9 +47,8 @@ services:
       secrets:
         - npmrc
     env_file: .env
+    # DATABASE_URL is read from .env (postgresql://<user>:<pass>@postgres:5432/<db>).
     environment:
-      # SQLite: always use the volume-mounted path regardless of .env content.
-      DATABASE_URL: "file:/data/app.db"
       HOSTNAME: "0.0.0.0"
       PORT: "3000"
       NODE_ENV: production
@@ -67,9 +65,9 @@ services:
     # nginx reaches it over appnet. expose is informational only.
     expose:
       - "3000"
-    volumes:
-      - appdata:/data
     depends_on:
+      postgres:
+        condition: service_healthy
       migrate:
         condition: service_completed_successfully
       otel-collector:
@@ -89,6 +87,29 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+
+  # ---------------------------------------------------------------------------
+  # postgres — application database. Not published to the host; reachable by
+  # the `migrate` and `app` services as `postgres:5432` over appnet.
+  # Credentials/database name are sourced from .env (see .env.example).
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    env_file: .env
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+      POSTGRES_DB: "${POSTGRES_DB}"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # No ports published — only reachable from other services on appnet.
+    networks:
+      - appnet
 
   # ---------------------------------------------------------------------------
   # otel-collector — receives OTLP traces/logs from the app (grpc + http)
@@ -177,8 +198,9 @@ services:
 # Volumes
 # =============================================================================
 volumes:
-  # Shared SQLite database between migrate and app services.
-  appdata:
+  # Postgres data directory — persists the application database across
+  # container restarts/recreations.
+  pgdata:
   # Let's Encrypt certificate store shared between certbot and nginx.
   certbot-etc:
   # ACME http-01 challenge webroot shared between certbot and nginx.

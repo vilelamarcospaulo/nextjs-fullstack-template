@@ -30,7 +30,7 @@ describe("GET /api/profile", () => {
     await seedUser({ id: "user-a", name: "Alice", email: "alice@example.com" });
     await seedProfile({
       userId: "user-a",
-      birthdate: new Date(1990, 4, 7),
+      birthdate: new Date(Date.UTC(1990, 4, 7)),
       bio: "Writer",
       location: "Paris",
     });
@@ -79,7 +79,10 @@ describe("GET /api/profile", () => {
 
   it("G-05: birthdate with zero-pad → formatted as YYYY-MM-DD", async () => {
     await seedUser({ id: "user-a", name: "Alice", email: "alice@example.com" });
-    await seedProfile({ userId: "user-a", birthdate: new Date(2000, 0, 5) });
+    await seedProfile({
+      userId: "user-a",
+      birthdate: new Date(Date.UTC(2000, 0, 5)),
+    });
     getSession.mockResolvedValue({ user: { id: "user-a" } });
 
     const res = await GET();
@@ -156,9 +159,9 @@ describe("PUT /api/profile", () => {
       where: { userId: "user-a" },
     });
     expect(profile).not.toBeNull();
-    expect(profile!.birthdate!.getFullYear()).toBe(1990);
-    expect(profile!.birthdate!.getMonth()).toBe(4);
-    expect(profile!.birthdate!.getDate()).toBe(7);
+    expect(profile!.birthdate!.getUTCFullYear()).toBe(1990);
+    expect(profile!.birthdate!.getUTCMonth()).toBe(4);
+    expect(profile!.birthdate!.getUTCDate()).toBe(7);
     expect(profile!.bio).toBe("Writer");
     expect(profile!.location).toBe("Paris");
 
@@ -195,9 +198,9 @@ describe("PUT /api/profile", () => {
     });
     expect(profile!.bio).toBe("New bio");
     expect(profile!.location).toBe("NYC");
-    expect(profile!.birthdate!.getFullYear()).toBe(1985);
-    expect(profile!.birthdate!.getMonth()).toBe(10);
-    expect(profile!.birthdate!.getDate()).toBe(20);
+    expect(profile!.birthdate!.getUTCFullYear()).toBe(1985);
+    expect(profile!.birthdate!.getUTCMonth()).toBe(10);
+    expect(profile!.birthdate!.getUTCDate()).toBe(20);
 
     const count = await prisma.profile.count({ where: { userId: "user-a" } });
     expect(count).toBe(1);
@@ -478,7 +481,7 @@ describe("PUT /api/profile", () => {
       userId: "user-a",
       bio: "real",
       location: "real",
-      birthdate: new Date(1990, 0, 1),
+      birthdate: new Date(Date.UTC(1990, 0, 1)),
     });
     getSession.mockResolvedValue({ user: { id: "user-a" } });
 

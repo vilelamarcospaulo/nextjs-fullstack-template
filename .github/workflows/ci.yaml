@@ -14,9 +14,10 @@ env:
   NEXT_TELEMETRY_DISABLED: "1"
   # src/lib/env.ts validates these at import time and throws if any is empty, so
   # `next build` and the integration route tests need all five present. CI never
-  # talks to real Google/SQLite, so dummy non-empty values are sufficient. The
-  # integration test project overrides DATABASE_URL via vitest.config.ts.
-  DATABASE_URL: "file:./dev.db"
+  # talks to real Google, and lint/format/build never talk to real Postgres, so
+  # dummy non-empty values are sufficient. The integration test project
+  # overrides DATABASE_URL via vitest.config.ts.
+  DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/app"
   BETTER_AUTH_SECRET: "ci-dummy-secret-not-used-for-anything-real"
   BETTER_AUTH_URL: "http://localhost:3000"
   GOOGLE_CLIENT_ID: "ci-dummy-client-id"
@@ -31,6 +32,23 @@ jobs:
       matrix:
         # Each entry maps to an npm script in package.json.
         task: ["lint", "format:check", "test", "build"]
+    # GitHub Actions services apply to the whole job regardless of matrix
+    # value, so lint/format/build also get an (unused) postgres container —
+    # acceptable, since it's cheap and keeps this workflow simple.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 

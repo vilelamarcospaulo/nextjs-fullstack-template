@@ -6,7 +6,7 @@ import { defineConfig } from "vitest/config";
 // - unit: framework-free logic (pure utils, the domain validator, Prisma-mocked
 //   use cases). No database, no global setup.
 // - integration: the real HTTP route handlers exercised end to end against a
-//   throwaway migrated SQLite DB. Only this project pays the DB setup cost.
+//   throwaway migrated Postgres DB. Only this project pays the DB setup cost.
 //
 // Each project uses `extends: true` to inherit the root resolve (the "@/*"
 // alias via tsconfigPaths) and the shared node/globals test settings.
@@ -47,12 +47,13 @@ export default defineConfig({
         test: {
           name: "integration",
           include: ["src/app/**/*.test.ts"],
-          // Provisions a fresh migrated SQLite DB for the route handlers.
+          // Provisions a fresh migrated Postgres DB for the route handlers.
           globalSetup: ["./test/global-setup.ts"],
           // Workers construct the Prisma client (@/lib/prisma) against the temp
           // DB. Must match the URL migrated in test/global-setup.ts.
           env: {
-            DATABASE_URL: "file:./prisma/test.db",
+            DATABASE_URL:
+              "postgresql://postgres:postgres@localhost:5432/app_test",
             BETTER_AUTH_SECRET: "auth_secret",
             BETTER_AUTH_URL: "http://localhost:3000",
             GOOGLE_CLIENT_ID: "google_client_id",

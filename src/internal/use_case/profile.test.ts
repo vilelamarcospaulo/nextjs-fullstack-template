@@ -39,7 +39,7 @@ describe("getProfile", () => {
       email: "a@x.com",
       image: "https://x.com/a.png",
       profile: {
-        birthdate: new Date(1990, 5, 15),
+        birthdate: new Date(Date.UTC(1990, 5, 15)),
         bio: "Hi",
         location: "NYC",
       },
@@ -113,7 +113,7 @@ describe("getProfile", () => {
       email: "c@x.com",
       image: null,
       profile: {
-        birthdate: new Date(2000, 0, 5), // 2000-01-05
+        birthdate: new Date(Date.UTC(2000, 0, 5)), // 2000-01-05
         bio: null,
         location: null,
       },
@@ -162,7 +162,7 @@ describe("updateProfile", () => {
       image: "https://x.com/a.png",
     };
     const profileRow = {
-      birthdate: new Date(1990, 5, 15),
+      birthdate: new Date(Date.UTC(1990, 5, 15)),
       bio: "Hi",
       location: "NYC",
     };
@@ -210,9 +210,9 @@ describe("updateProfile", () => {
       // Verify the Date fields by their year/month/day components rather than
       // identity, because strToDate constructs a new instance each call.
       const checkDate = (d: Date) => {
-        expect(d.getFullYear()).toBe(1990);
-        expect(d.getMonth()).toBe(5);
-        expect(d.getDate()).toBe(15);
+        expect(d.getUTCFullYear()).toBe(1990);
+        expect(d.getUTCMonth()).toBe(5);
+        expect(d.getUTCDate()).toBe(15);
       };
 
       expect(call.where).toEqual({ userId });

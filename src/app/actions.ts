@@ -6,8 +6,7 @@ import { auth } from "@/lib/auth";
 // Discriminated-union result type used by all server actions in this file.
 // Callers narrow on `ok` before accessing `data` or `error`.
 export type GreetingResult =
-  | { ok: true; data: string }
-  | { ok: false; error: string };
+  { ok: true; data: string } | { ok: false; error: string };
 
 // Maximum characters accepted for the `name` argument. Anything longer is
 // rejected before any further processing — keeps payloads small and prevents

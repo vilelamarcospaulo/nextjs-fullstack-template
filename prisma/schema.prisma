@@ -9,7 +9,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -69,16 +69,13 @@ model User {
 // and honors @updatedAt, but raw SQL backfills do not) cannot violate NOT NULL.
 //
 // birthdate modeling note: a birthdate is a calendar day with no meaningful
-// time-of-day component. SQLite has no native DATE type (it stores DATETIME as
-// text) and Prisma rejects `@db.Date` for the sqlite connector, so it stays a
-// plain DateTime? here. In a derived Postgres project, add `@db.Date` to map it
-// to the native `date` column and avoid spurious timezone math — see
-// prisma/POSTGRES.md. Always write birthdates at UTC midnight to stay portable.
+// time-of-day component. @db.Date maps it to Postgres's native `date` column
+// (no time-of-day, no timezone math) instead of a full timestamp.
 model Profile {
   id        String    @id @default(cuid())
   userId    String    @unique
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  birthdate DateTime?
+  birthdate DateTime? @db.Date
   bio       String?
   location  String?
   createdAt DateTime  @default(now())

@@ -35,6 +35,36 @@ services:
     networks:
       - telemetry
 
+  # Postgres: local app database for `npm run dev` (and the app_test database
+  # used by the integration test bootstrap, created/dropped on the same
+  # server). Port 5432 is published so the app running on the host can reach
+  # it at postgresql://postgres:postgres@localhost:5432/app.
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: app
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - db
+
+volumes:
+  # Persists Postgres data across `docker compose down`/`up` cycles.
+  pgdata:
+
 networks:
   telemetry:
+    driver: bridge
+  # Separate network for the local database; it does not need to talk to the
+  # telemetry stack.
+  db:
     driver: bridge

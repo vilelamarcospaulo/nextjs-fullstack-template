@@ -9,9 +9,9 @@ import { env } from "@/lib/env";
 const trustedOrigins = [new URL(env.BETTER_AUTH_URL).origin];
 
 // Server-side Better Auth instance. Persistence runs through Prisma (typed
-// client, SQLite). Google is the only provider for now.
+// client, Postgres). Google is the only provider for now.
 export const auth = betterAuth({
-  database: prismaAdapter(prisma, { provider: "sqlite" }),
+  database: prismaAdapter(prisma, { provider: "postgresql" }),
   baseURL: env.BETTER_AUTH_URL,
   secret: env.BETTER_AUTH_SECRET,
 
