@@ -46,7 +46,7 @@ export default defineConfig({
         extends: true,
         test: {
           name: "integration",
-          include: ["src/app/**/*.test.ts"],
+          include: ["src/app/**/*.test.ts", "src/worker/**/*.test.ts"],
           // Provisions a fresh migrated Postgres DB for the route handlers.
           globalSetup: ["./test/global-setup.ts"],
           // Workers construct the Prisma client (@/lib/prisma) against the temp

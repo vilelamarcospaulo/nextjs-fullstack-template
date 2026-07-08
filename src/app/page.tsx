@@ -3,6 +3,7 @@ import { getSession } from "@/lib/session";
 import { SignInButton } from "./auth-buttons";
 import Greeter from "./greeter";
 import ApiHelloDemo from "./api-hello-demo";
+import JobDemo from "./job-demo";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -43,7 +44,7 @@ export default async function Home() {
         )}
       </section>
 
-      <div className="grid gap-6 sm:grid-cols-2">
+      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader>
             <CardTitle>Greeter</CardTitle>
@@ -67,6 +68,20 @@ export default async function Home() {
           </CardHeader>
           <CardContent>
             <ApiHelloDemo />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Async Job</CardTitle>
+            <CardDescription>
+              Enqueue a background job onto a Postgres-backed queue
+              (pg-boss), processed asynchronously by a separate worker
+              process.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <JobDemo />
           </CardContent>
         </Card>
       </div>
