@@ -65,10 +65,15 @@ describe("Navbar", () => {
   beforeEach(() => {
     mockPush = vi.fn();
     mockRefresh = vi.fn();
+    // Partial mock of the router shape (only the two methods this component
+    // calls) — doesn't structurally satisfy the full AppRouterInstance, so a
+    // direct cast is rejected under strict mode. Route through `unknown`
+    // (as tsc's own error message suggests) since we're intentionally
+    // narrowing to only what's used.
     vi.mocked(useRouter).mockReturnValue({
       push: mockPush,
       refresh: mockRefresh,
-    } as ReturnType<typeof useRouter>);
+    } as unknown as ReturnType<typeof useRouter>);
     vi.mocked(signOut).mockResolvedValue(undefined as never);
   });
 
