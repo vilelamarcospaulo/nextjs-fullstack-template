@@ -38,7 +38,7 @@ describe("JobDemo", () => {
     const user = userEvent.setup();
     const okResult: JobActionResult = {
       ok: true,
-      data: { jobId: "abc-123" },
+      data: { jobId: "abc-123", traceId: "trace-abc" },
     };
     mockSubmitHelloJob.mockResolvedValue(okResult);
 
@@ -54,6 +54,7 @@ describe("JobDemo", () => {
     const pre = document.querySelector("pre");
     expect(pre).toBeInTheDocument();
     expect(pre).toHaveTextContent("Job enqueued: abc-123");
+    expect(pre).toHaveTextContent("Trace: trace-abc");
   });
 
   it("shows pending label and disabled button while action is unresolved, then re-enables", async () => {
@@ -73,7 +74,7 @@ describe("JobDemo", () => {
     const btn = screen.getByRole("button", { name: "Enqueuing…" });
     expect(btn).toBeDisabled();
 
-    resolve!({ ok: true, data: { jobId: "xyz-789" } });
+    resolve!({ ok: true, data: { jobId: "xyz-789", traceId: "trace-xyz" } });
 
     await waitFor(() =>
       expect(

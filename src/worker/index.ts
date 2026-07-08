@@ -16,7 +16,7 @@ if (process.env.OTEL_EXPORTER_OTLP_ENDPOINT) {
 
 import { loadWorkerEnv } from "./env.ts";
 import { startHealthServer } from "./health-server.ts";
-import { getQueue } from "../lib/queue.ts";
+import { getQueue, workJob } from "../lib/queue.ts";
 import { HELLO_DLQ, HELLO_QUEUE } from "../internal/domain/jobs.ts";
 import { processHelloJob } from "../internal/use_case/jobs.ts";
 import { logger } from "../lib/logger.ts";
@@ -28,25 +28,14 @@ async function main() {
 
   let ready = false;
 
-  await boss.work(
+  // job_started/job_completed/job_failed logging (bound to traceId/jobId)
+  // happens generically inside workJob (src/lib/queue.ts) — the handler here
+  // only needs the actual business logic.
+  await workJob<HelloJobPayload>(
     HELLO_QUEUE,
     { batchSize: env.WORKER_CONCURRENCY },
-    async (jobs) => {
-      for (const job of jobs) {
-        logger.info({ jobId: job.id }, "job_started");
-        try {
-          await processHelloJob(job.data as HelloJobPayload);
-          logger.info({ jobId: job.id }, "job_completed");
-        } catch (error) {
-          logger.error({ jobId: job.id, err: error }, "job_failed");
-          // Re-throw: pg-boss's .work() handler must reject for the job to
-          // be marked failed and retried (or dead-lettered once retries are
-          // exhausted, per the retry/backoff/deadLetter config already
-          // established in src/lib/queue.ts's createQueue calls). Swallowing
-          // this would silently mark the job complete.
-          throw error;
-        }
-      }
+    async (payload, ctx) => {
+      await processHelloJob(payload, ctx);
     },
   );
 
@@ -54,11 +43,13 @@ async function main() {
   // logic here. Re-driving dead-lettered jobs is an intentional scope
   // boundary for this scaffold; a future feature can add an operator-facing
   // re-drive flow on top of pg-boss's `redrive()` API.
-  await boss.work(HELLO_DLQ, { batchSize: 1 }, async (jobs) => {
-    for (const job of jobs) {
-      logger.error({ jobId: job.id, data: job.data }, "job_dead_lettered");
-    }
-  });
+  await workJob<HelloJobPayload>(
+    HELLO_DLQ,
+    { batchSize: 1 },
+    async (payload, ctx) => {
+      ctx.log.error({ payload }, "job_dead_lettered");
+    },
+  );
 
   ready = true;
 

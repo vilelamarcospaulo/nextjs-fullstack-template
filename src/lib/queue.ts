@@ -17,6 +17,8 @@
 // resolution). That's why every import in THIS file is relative with an
 // explicit ".ts" extension.
 import { PgBoss } from "pg-boss";
+import type { Job, SendOptions, WorkOptions } from "pg-boss";
+import type { Logger } from "pino";
 import { HELLO_DLQ, HELLO_QUEUE } from "../internal/domain/jobs.ts";
 import { logger } from "./logger.ts";
 
@@ -100,4 +102,64 @@ export async function getQueue(): Promise<PgBoss> {
   }
 
   return globalForQueue.pgBossInit;
+}
+
+// Every job is sent/received wrapped in this envelope so a traceId travels
+// with it automatically — no job type has to remember to thread it through
+// its own payload schema. See src/lib/trace.ts for what traceId means.
+export type JobEnvelope<T> = {
+  payload: T;
+  traceId: string;
+};
+
+// The one way any use_case enqueues a job. Wraps `payload` in the envelope
+// and delegates to pg-boss's own `send`.
+export async function sendJob<T extends object>(
+  queueName: string,
+  payload: T,
+  traceId: string,
+  options?: SendOptions,
+): Promise<string | null> {
+  const boss = await getQueue();
+  const envelope: JobEnvelope<T> = { payload, traceId };
+  return boss.send(queueName, envelope, options);
+}
+
+// The one way the worker subscribes to a queue. Unwraps the envelope, binds
+// a pino child logger to `traceId`/`jobId`/`queue` (so every log line the
+// handler emits via `ctx.log` carries them without repeating them), and logs
+// job_started/job_completed/job_failed around the handler call. On a thrown
+// error, logs job_failed and RE-THROWS — pg-boss's `.work()` handler must
+// reject for the job to be marked failed and retried (or dead-lettered once
+// retries are exhausted, per the retry/backoff/deadLetter config in
+// initQueue above). This centralizes logging that used to live inline in
+// src/worker/index.ts, so future job types don't have to re-implement it.
+export async function workJob<T>(
+  queueName: string,
+  options: WorkOptions,
+  handler: (
+    payload: T,
+    ctx: { traceId: string; jobId: string; log: Logger },
+  ) => Promise<void>,
+): Promise<string> {
+  const boss = await getQueue();
+  return boss.work<JobEnvelope<T>>(
+    queueName,
+    options,
+    async (jobs: Job<JobEnvelope<T>>[]) => {
+      for (const job of jobs) {
+        const { payload, traceId } = job.data;
+        const log = logger.child({ traceId, jobId: job.id, queue: queueName });
+
+        log.info({}, "job_started");
+        try {
+          await handler(payload, { traceId, jobId: job.id, log });
+          log.info({}, "job_completed");
+        } catch (error) {
+          log.error({ err: error }, "job_failed");
+          throw error;
+        }
+      }
+    },
+  );
 }

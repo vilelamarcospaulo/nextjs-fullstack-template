@@ -3,6 +3,7 @@
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { enqueueHelloJob as enqueueHelloJobUseCase } from "@/internal/use_case/jobs";
+import { newTraceId } from "@/lib/trace";
 
 // Discriminated-union result type used by all server actions in this file.
 // Callers narrow on `ok` before accessing `data` or `error`.
@@ -10,9 +11,10 @@ export type GreetingResult =
   { ok: true; data: string } | { ok: false; error: string };
 
 // Discriminated-union result type for the job-queue demo action. Same shape
-// convention as GreetingResult, just carrying the pg-boss job id on success.
+// convention as GreetingResult, just carrying the pg-boss job id and the
+// traceId the job chain was tagged with (see src/lib/trace.ts) on success.
 export type JobActionResult =
-  | { ok: true; data: { jobId: string } }
+  | { ok: true; data: { jobId: string; traceId: string } }
   | { ok: false; error: string };
 
 // Maximum characters accepted for the `name` argument. Anything longer is
@@ -67,7 +69,9 @@ const MAX_JOB_MESSAGE_LENGTH = 200;
 //
 // Auth gate: identical to generateGreeting — unauthenticated callers receive
 // an { ok: false } result rather than an exception.
-export async function submitHelloJob(message: string): Promise<JobActionResult> {
+export async function submitHelloJob(
+  message: string,
+): Promise<JobActionResult> {
   // ── 1. Auth check ──────────────────────────────────────────────────────────
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) {
@@ -86,7 +90,11 @@ export async function submitHelloJob(message: string): Promise<JobActionResult> 
   }
 
   // ── 3. Enqueue via the use case ────────────────────────────────────────────
-  const result = await enqueueHelloJobUseCase({ message });
+  // This request is the root of a new job chain, so a fresh traceId is
+  // minted here and handed to the use case — every job this one spawns will
+  // carry it forward (see src/internal/use_case/jobs.ts).
+  const traceId = newTraceId();
+  const result = await enqueueHelloJobUseCase({ message }, { traceId });
 
   // ── 4. Map validation failures ─────────────────────────────────────────────
   if (!result.ok) {
@@ -94,5 +102,5 @@ export async function submitHelloJob(message: string): Promise<JobActionResult> 
   }
 
   // ── 5. Success ──────────────────────────────────────────────────────────────
-  return { ok: true, data: { jobId: result.jobId } };
+  return { ok: true, data: { jobId: result.jobId, traceId: result.traceId } };
 }

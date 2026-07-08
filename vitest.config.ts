@@ -39,7 +39,11 @@ export default defineConfig({
         extends: true,
         test: {
           name: "unit",
-          include: ["src/utils/**/*.test.ts", "src/internal/**/*.test.ts"],
+          include: [
+            "src/utils/**/*.test.ts",
+            "src/internal/**/*.test.ts",
+            "src/lib/**/*.test.ts",
+          ],
         },
       },
       {

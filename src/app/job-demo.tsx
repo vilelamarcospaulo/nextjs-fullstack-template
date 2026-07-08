@@ -39,6 +39,8 @@ export default function JobDemo() {
           {result.ok ? (
             <pre className="bg-muted text-muted-foreground overflow-x-auto rounded-md p-3 font-mono text-sm">
               Job enqueued: {result.data.jobId}
+              {"\n"}
+              Trace: {result.data.traceId}
             </pre>
           ) : result.error === "unauthenticated" ? (
             // Friendly degraded state for logged-out visitors — shown instead

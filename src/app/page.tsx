@@ -75,9 +75,8 @@ export default async function Home() {
           <CardHeader>
             <CardTitle>Async Job</CardTitle>
             <CardDescription>
-              Enqueue a background job onto a Postgres-backed queue
-              (pg-boss), processed asynchronously by a separate worker
-              process.
+              Enqueue a background job onto a Postgres-backed queue (pg-boss),
+              processed asynchronously by a separate worker process.
             </CardDescription>
           </CardHeader>
           <CardContent>

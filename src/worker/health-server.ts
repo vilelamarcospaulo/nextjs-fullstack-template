@@ -14,7 +14,10 @@ const NOT_READY_BODY = JSON.stringify({ status: "not_ready" });
 // with a small JSON body once `isReady()` returns true, 503 otherwise.
 // Returns the underlying Server so the caller can close it during graceful
 // shutdown.
-export function startHealthServer(port: number, isReady: () => boolean): Server {
+export function startHealthServer(
+  port: number,
+  isReady: () => boolean,
+): Server {
   const server = createServer((_req, res) => {
     if (isReady()) {
       res.writeHead(200, { "Content-Type": "application/json" });
