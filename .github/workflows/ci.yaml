@@ -31,7 +31,7 @@ jobs:
       fail-fast: false
       matrix:
         # Each entry maps to an npm script in package.json.
-        task: ["lint", "format:check", "test", "build"]
+        task: ["lint", "format:check", "typecheck", "test", "build"]
     # GitHub Actions services apply to the whole job regardless of matrix
     # value, so lint/format/build also get an (unused) postgres container —
     # acceptable, since it's cheap and keeps this workflow simple.

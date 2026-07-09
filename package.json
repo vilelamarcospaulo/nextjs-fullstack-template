@@ -2,6 +2,7 @@
   "name": "content-generator",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -9,12 +10,15 @@
     "lint": "eslint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
     "test:ui": "vitest run --project ui",
     "test:watch": "vitest",
-    "test:cov": "vitest run --coverage"
+    "test:cov": "vitest run --coverage",
+    "worker": "node src/worker/index.ts",
+    "worker:dev": "node --env-file=.env --env-file=.env.local --watch src/worker/index.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
@@ -37,11 +41,13 @@
     "next": "16.2.9",
     "next-themes": "^0.4.6",
     "pg": "^8.22.0",
+    "pg-boss": "^12.25.1",
     "pino": "^10.3.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "sonner": "^2.0.7",
-    "tailwind-merge": "^3.6.0"
+    "tailwind-merge": "^3.6.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

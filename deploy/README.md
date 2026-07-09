@@ -32,7 +32,15 @@ See `.env.example` for a commented template.
 npm run dev
 ```
 
-4. View traces in Jaeger UI:
+4. (Optional) In a second terminal, run the async job worker:
+
+```bash
+npm run worker:dev
+```
+
+The worker connects to the same local Postgres and processes jobs enqueued by the app (e.g., via the "Async Job" demo card on the homepage).
+
+5. View traces in Jaeger UI:
 
 ```
 http://localhost:16686
@@ -52,6 +60,7 @@ The production stack is a self-contained VPS deployment that includes:
 
 - **nginx** with Let's Encrypt TLS (via certbot)
 - **app** (Next.js)
+- **worker** (background job consumer — internal-only, no HTTP traffic from nginx)
 - **OpenTelemetry Collector** + **Jaeger** (internal-only)
 
 For full production setup, see `deploy/production/.env.example` and `deploy/production/init-letsencrypt.sh`.
