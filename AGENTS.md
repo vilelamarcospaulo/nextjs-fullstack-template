@@ -1,5 +1,74 @@
 <!-- BEGIN:nextjs-agent-rules -->
 # This is NOT the Next.js you know
 
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
+Running **Next.js 16.2.9** with **React 19.2**. If your instincts say `middleware.ts`, `next lint`, sync `params`, or `--turbopack` flags, they're wrong here — that's Next.js 15-and-earlier muscle memory. Full docs are vendored at `node_modules/next/dist/docs/`; read the relevant page there before touching an API you're not sure about. The breaking changes that actually bite in this codebase:
+
+- **All Request APIs are async, no exceptions.** `cookies()`, `headers()`, `draftMode()`, and `params`/`searchParams` in pages, layouts, and route handlers must be `await`ed. There is no sync fallback left (removed in 16; 15 only warned). Same for `params`/`id` in `opengraph-image`/`twitter-image`/`icon`/`apple-icon`/`sitemap` generators.
+- **`middleware.ts` → `proxy.ts`.** The file and the exported function are both renamed; `edge` runtime is not supported under the new name (stays `nodejs`, not configurable). This repo currently has no middleware/proxy file — if you add one, name it `proxy.ts` from the start.
+- **`next lint` is gone.** Lint via `eslint` directly (already wired as `npm run lint`, flat config in `eslint.config.mjs`). `next build` does not lint.
+- **Turbopack is the default**, for both `dev` and `build` — no `--turbopack` flag needed (`package.json` scripts are already flag-free). A custom `webpack` config in `next.config.ts` would make `next build` fail by default; there isn't one here.
+- **`revalidateTag` needs a `cacheLife` profile as its second argument** now (`revalidateTag('posts', 'max')`); the one-arg form is a type error. For read-your-writes semantics use `updateTag` instead. Neither is used in this repo yet — check `node_modules/next/dist/docs/01-app/02-guides/upgrading/version-16.md` before introducing either.
+- **Parallel route slots require an explicit `default.js`/`default.tsx`.** Not applicable today (no `@slot` folders under `src/app`), but if you add one, it needs a default file or the build fails.
+- **`serverRuntimeConfig`/`publicRuntimeConfig` are removed.** Use `process.env.*` (server) / `NEXT_PUBLIC_*` (client) — see `src/lib/env.ts` for this repo's validated-env pattern.
+
+If you hit an API that behaves unexpectedly, assume a 16 change before assuming a bug — grep `node_modules/next/dist/docs/01-app/02-guides/upgrading/version-16.md` first.
 <!-- END:nextjs-agent-rules -->
+
+# Architecture
+
+Loosely clean-architecture, framework-agnostic core wrapped by a thin Next.js boundary:
+
+- `src/internal/domain/` — pure types + validators, no framework/IO imports (e.g. `domain/profile.ts`'s `inputToProfile()` returns `{ok:true,value}|{ok:false,errors}`; also used client-side, so validation logic has one source of truth).
+- `src/internal/use_case/` — orchestrates domain + infra (Prisma, queue); still no Next.js imports.
+- `src/app/` — App Router boundary only: route handlers and pages parse the request/session and delegate to use cases. Keep business logic out of `src/app`.
+- `src/lib/` — infra singletons: `prisma.ts`, `queue.ts`, `auth.ts`/`auth-client.ts`/`session.ts`, `logger.ts`, `trace.ts`, `env.ts`.
+- `src/utils/` — small pure helpers with no dependencies on the layers above.
+- `src/components/` — UI (shadcn/ui-based `components/ui`, plus `navbar.tsx`, `theme-toggle.tsx`, `providers.tsx`).
+
+**Import-alias rule**: `src/worker/index.ts` runs via plain `node` (no bundler, no path-alias resolution), so any file it imports transitively — `internal/domain`, `internal/use_case`, `lib/queue.ts` — must use **relative imports with explicit `.ts` extensions**, never the `@/*` alias. `src/app/**` code can use `@/*` freely.
+
+# Auth
+
+`src/lib/auth.ts` builds the server `betterAuth()` instance (`prismaAdapter`, Google as sole social provider, explicit rate limiting). Mounted at `src/app/api/auth/[...all]/route.ts` via `toNextJsHandler(auth)`.
+
+- In **Server Components / RSC render**: use `src/lib/session.ts`'s `getSession` (wrapped in React `cache()`, deduped per render pass).
+- In **Route Handlers**: don't use the cached `getSession` — call `auth.api.getSession({ headers: await headers() })` directly (see `src/app/api/profile/route.ts`), since Route Handlers fall outside the RSC render pass the cache is scoped to.
+
+# Database
+
+Prisma 7 with `@prisma/adapter-pg` (`PrismaPg`) — Prisma 7 requires a driver adapter rather than reading the datasource URL straight from the schema. `src/lib/prisma.ts` caches the client on `globalThis` for HMR safety.
+
+- Schema: `prisma/schema.prisma`. Generated client → `src/generated/prisma`, gitignored (Prisma 7 emits a full JS/TS client, treat it as a build artifact — regenerate with `npx prisma generate`, required before typecheck/build/test since everything imports from it).
+- Config: `prisma.config.ts` (schema/migration paths, seed hook).
+- Seed: `prisma/seed.ts`, run via `node prisma/seed.ts` (Node's native TS stripping — no `ts-node`), idempotent upsert of a fixed-id demo user/profile.
+- Migrations: `prisma/migrations/`.
+
+# Background jobs
+
+`src/worker/index.ts` is a separate long-running process from the Next app (`npm run worker`, or `npm run worker:dev` for `--watch`), sharing `src/lib/queue.ts` (pg-boss, singleton cached on `globalThis`, same pattern as Prisma). Queues are declared idempotently in `initQueue()`.
+
+Every job is wrapped in a `JobEnvelope<T> = { payload, traceId }` (`sendJob`/`workJob` in `src/lib/queue.ts`). `src/lib/trace.ts`'s `newTraceId()` starts a chain (`crypto.randomUUID()`); pass an existing `ctx.traceId` through `enqueueHelloJob(input, { traceId })` to continue a chain across job A → job B. `workJob` binds the traceId into a pino child logger (`logger.child({ traceId, jobId, queue })`), so an HTTP request and every job it triggers are grepable by one traceId across processes. Follow this pattern for any new job type — don't invent a separate correlation-id scheme.
+
+# Observability
+
+`src/instrumentation.ts` is the Next.js instrumentation hook; it dynamically imports `src/instrumentation.node.ts` only when `NEXT_RUNTIME==="nodejs"` **and** `OTEL_EXPORTER_OTLP_ENDPOINT` is set — telemetry is opt-in and must be initialized before pino/Prisma are first `require`d (OTel auto-instrumentation patches modules at require-time; importing late makes the patches silently no-op). `onRequestError` pipes RSC/route/action errors into pino.
+
+`src/lib/logger.ts` is plain pino → stdout JSON, no pretty-print transport (stdout is the log pipeline in a container). When telemetry is enabled, `@opentelemetry/instrumentation-pino` injects `trace_id`/`span_id` automatically.
+
+`serverExternalPackages` in `next.config.ts` keeps the OTel SDK and Prisma/pino instrumentation packages out of the server bundle — required for the require-time patching above to work. Don't remove entries from that list without understanding why each is there (see the comment block in `next.config.ts`).
+
+# Testing
+
+`vitest.config.ts` defines three projects — use the matching npm script, not bare `vitest run`, when you only need one:
+
+- **unit** (`npm run test:unit`) — `src/utils/**`, `src/internal/**`, `src/lib/**` `*.test.ts`. No database.
+- **integration** (`npm run test:integration`) — `src/app/**/*.test.ts`, `src/worker/**/*.test.ts`. `test/global-setup.ts` recreates a throwaway `app_test` Postgres DB and runs `prisma migrate deploy` — needs a running Postgres.
+- **ui** (`npm run test:ui`) — jsdom, `*.test.tsx`. `test/setup-ui.ts` polyfills `ResizeObserver`/`PointerEvent`/pointer-capture/`matchMedia` for base-ui components — don't hand-roll these polyfills per test file.
+
+**Mocking convention**: partial mocks that don't implement a hook's full return type (e.g. a router mock with only `push`/`refresh`) must be cast as `as unknown as ReturnType<typeof useRouter>`, not a direct cast — TypeScript's strict mode rejects a direct cast when the mock only partially overlaps the real type.
+
+# Conventions
+
+- Commit messages follow Conventional Commits (`feat(scope): ...`, `fix(scope): ...`, `chore: ...`).
+- CI (`.github/workflows/ci.yaml`) runs `lint`, `format:check`, `typecheck`, `test`, `build` as a matrix against a real Postgres service container; `prisma generate` runs before every task since generated types are gitignored.
+- Docker: `Dockerfile` has `runner` (app) and `migrator` (migrations) targets; see `README.md` and `deploy/README.md` for local (docker-compose + Jaeger) and production (VPS + nginx/certbot) setups.
