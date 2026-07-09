@@ -57,20 +57,15 @@ jobs:
           # Node >= 23.6 so Prisma's `node prisma/seed.ts` (native TS stripping)
           # works; using the current major to stay close to local dev.
           node-version: "24"
+          # Caches ~/.npm keyed on package-lock.json's hash — standard
+          # setup-node lockfile-based caching, now that one is committed.
+          cache: "npm"
 
-      # No lockfile is committed, so setup-node's lockfile-based npm cache can't
-      # be used. Cache the npm download cache (~/.npm) keyed on package.json to
-      # still speed up installs.
-      - name: Cache npm downloads
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-npm-${{ hashFiles('package.json') }}
-          restore-keys: ${{ runner.os }}-npm-
-
-      # No package-lock.json in the repo, so `npm ci` is not possible — use install.
+      # npm ci is reproducible (installs exactly what's in package-lock.json,
+      # never touches it) and faster than npm install — matches how the
+      # Dockerfile's deps stage installs (Dockerfile, `deps` stage).
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       # The Prisma client (src/generated/prisma) is gitignored; every task below
       # imports from it, so generate it before running anything.
