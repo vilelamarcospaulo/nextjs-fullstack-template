@@ -55,7 +55,7 @@ services:
       # OTEL: the app opts in when this endpoint is set; the collector is
       # reachable by its service name over the internal appnet.
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4318"
-      OTEL_SERVICE_NAME: content-generator
+      OTEL_SERVICE_NAME: arch-view
       OTEL_SERVICE_VERSION: "0.1.0"
       LOG_LEVEL: info
       # Must match the public HTTPS domain used in Google OAuth redirect URIs:
@@ -115,7 +115,7 @@ services:
       # reachable by its service name over the internal appnet. Distinct
       # OTEL_SERVICE_NAME from `app` so Jaeger shows it as a separate service.
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4318"
-      OTEL_SERVICE_NAME: content-generator-worker
+      OTEL_SERVICE_NAME: arch-view-worker
       OTEL_SERVICE_VERSION: "0.1.0"
       LOG_LEVEL: info
     # No ports published — internal only, same as `app`.
