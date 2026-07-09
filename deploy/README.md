@@ -21,7 +21,7 @@ docker compose -f deploy/local/docker-compose.yaml up -d
 
 ```bash
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
-OTEL_SERVICE_NAME=content-generator
+OTEL_SERVICE_NAME=arch-view
 ```
 
 See `.env.example` for a commented template.
@@ -46,7 +46,7 @@ The worker connects to the same local Postgres and processes jobs enqueued by th
 http://localhost:16686
 ```
 
-Select service **`content-generator`** to see your traces.
+Select service **`arch-view`** to see your traces.
 
 ### Teardown
 
