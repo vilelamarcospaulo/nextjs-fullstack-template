@@ -4,7 +4,7 @@
 // Response.
 import { eq } from "drizzle-orm";
 import { createId } from "@paralleldrive/cuid2";
-import { db } from "@/lib/db";
+import { getDb } from "@/lib/db";
 import { user, profile } from "@/lib/schema";
 import { inputToProfile, type Field } from "@/internal/domain/profile";
 import { dateToStr } from "@/utils/date";
@@ -51,7 +51,7 @@ function toView(user: {
 
 // Read a user's own profile. Returns null when the user row is missing.
 export async function getProfile(userId: string): Promise<ProfileView | null> {
-  const rows = await db
+  const rows = await getDb()
     .select({
       name: user.name,
       email: user.email,
@@ -91,7 +91,7 @@ export async function updateProfile(
 
   const { name, image, birthdate, bio, location } = result.value;
 
-  const value = await db.transaction(async (tx) => {
+  const value = await getDb().transaction(async (tx) => {
     const [updatedUser] = await tx
       .update(user)
       .set({ name, image })

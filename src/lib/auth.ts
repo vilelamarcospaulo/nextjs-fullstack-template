@@ -2,15 +2,19 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { organization } from "better-auth/plugins";
 import { asc, eq } from "drizzle-orm";
-import { db } from "@/lib/db";
+import { getDb } from "@/lib/db";
 import * as schema from "@/lib/schema";
 import { member } from "@/lib/schema";
-import { env } from "@/lib/env";
+import { getEnv } from "@/lib/env";
+
+// Called once at module scope — see the residual-risk note above the
+// `betterAuth(...)` call below for why this (and getDb()) still run eagerly.
+const authEnv = getEnv();
 
 // Derive the trusted origin from the canonical app URL so better-auth's
 // CSRF / origin-check middleware accepts requests originating from this host.
 // Additional origins (e.g. a CDN or preview URL) can be appended to the array.
-const trustedOrigins = [new URL(env.BETTER_AUTH_URL).origin];
+const trustedOrigins = [new URL(authEnv.BETTER_AUTH_URL).origin];
 
 // ── Organization databaseHooks, extracted as standalone functions ──────────
 //
@@ -60,7 +64,7 @@ export async function defaultActiveOrganization(session: {
 }): Promise<{ data: { activeOrganizationId: string } } | undefined> {
   if (session.activeOrganizationId) return undefined;
 
-  const [firstMembership] = await db
+  const [firstMembership] = await getDb()
     .select()
     .from(member)
     .where(eq(member.userId, session.userId))
@@ -73,10 +77,21 @@ export async function defaultActiveOrganization(session: {
 
 // Server-side Better Auth instance. Persistence runs through Drizzle (node-postgres).
 // Google is the only provider for now.
+//
+// Residual risk (accepted for this migration phase, not fixed here):
+// drizzleAdapter() needs a concrete client synchronously, and betterAuth()
+// itself has no lazy/async form, so getDb() and getEnv() are both called at
+// module top level here — the same cold-start-before-request-context
+// exposure src/lib/env.ts's old eager pattern had. getDb()'s Hyperdrive-then-
+// DATABASE_URL fallback (see src/lib/db.ts) makes this self-healing in
+// practice (a getCloudflareContext() failure just falls through to the same
+// direct-connection path Node/Docker already use), but a fully lazy
+// getAuth() wrapper — touching every route handler, server action, and test
+// that imports `auth` — is out of scope for this phase.
 export const auth = betterAuth({
-  database: drizzleAdapter(db, { provider: "pg", schema }),
-  baseURL: env.BETTER_AUTH_URL,
-  secret: env.BETTER_AUTH_SECRET,
+  database: drizzleAdapter(getDb(), { provider: "pg", schema }),
+  baseURL: authEnv.BETTER_AUTH_URL,
+  secret: authEnv.BETTER_AUTH_SECRET,
 
   // Origins that better-auth will accept for CSRF and callback-URL checks.
   // Verified in node_modules/@better-auth/core/dist/types/init-options.d.mts:
@@ -85,24 +100,21 @@ export const auth = betterAuth({
 
   socialProviders: {
     google: {
-      clientId: env.GOOGLE_CLIENT_ID,
-      clientSecret: env.GOOGLE_CLIENT_SECRET,
+      clientId: authEnv.GOOGLE_CLIENT_ID,
+      clientSecret: authEnv.GOOGLE_CLIENT_SECRET,
     },
   },
 
-  // Rate limiting — config shape verified in
-  //   node_modules/@better-auth/core/dist/types/init-options.d.mts (BetterAuthRateLimitOptions)
-  // and in the runtime defaults in
-  //   node_modules/better-auth/dist/context/create-context.mjs.
-  //
-  // Enabled explicitly in all environments (the default is production-only).
-  // window: 10 s, max: 100 requests — same as the library defaults, made
-  // explicit here so future tuning is visible in code review.
+  // Rate limiting is explicitly disabled for now: better-auth's built-in
+  // "memory" storage is a per-process counter, which doesn't work across
+  // Cloudflare Workers isolates (many short-lived, concurrent isolates, no
+  // shared memory between them) — leaving it enabled with "memory" storage
+  // wouldn't actually rate-limit anything in production, just silently
+  // pretend to. Note that simply omitting this block would NOT disable rate
+  // limiting: better-auth's own default is enabled-in-production. Revisit
+  // with a durable store (Workers KV or D1) backing it in a later phase.
   rateLimit: {
-    enabled: true,
-    window: 10, // seconds
-    max: 100, // requests per window
-    storage: "memory",
+    enabled: false,
   },
 
   // Default owner/admin/member roles + built-in permission statements — no

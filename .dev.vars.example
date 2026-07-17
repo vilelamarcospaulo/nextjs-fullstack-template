@@ -10,3 +10,9 @@
 # Cloudflare account needed for local dev. Pair with QUEUE_LOCAL_PUSH_URL in
 # the app's own .env.local (see .env.example).
 LOCAL_DEV_PUSH_ENABLED=true
+
+# ── App Worker Hyperdrive override (wrangler dev / opennextjs-cloudflare preview) ──
+# Same override as .env.example's CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE,
+# for the app Worker's own wrangler.app.jsonc-driven local runs. Same value as
+# DATABASE_URL.
+CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE="postgresql://postgres:postgres@localhost:5432/app"

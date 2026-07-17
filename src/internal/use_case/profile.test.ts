@@ -1,14 +1,15 @@
 // Drizzle's real query-builder types are far stricter than a unit test needs
-// (chained generics for select/insert/update builders). We mock @/lib/db with
-// a minimal chainable stand-in and view each mocked link through Vitest's
-// loose `Mock` type so resolved values and recorded call args stay assertable
-// without reconstructing exact Drizzle builder types. Per this repo's mocking
-// convention, this partial mock (it only implements the subset of `db` the
-// use case actually calls) is cast as `as unknown as typeof db` at the module
-// boundary, and individual chain links are viewed through `Mock` (via the
-// `asMock` helper) when a test needs to inspect raw call args — not a direct
-// cast — since TypeScript's strict mode rejects a direct cast when the mock
-// only partially overlaps the real type.
+// (chained generics for select/insert/update builders). We mock @/lib/db's
+// getDb() with a minimal chainable stand-in and view each mocked link through
+// Vitest's loose `Mock` type so resolved values and recorded call args stay
+// assertable without reconstructing exact Drizzle builder types. Per this
+// repo's mocking convention, this partial mock (it only implements the subset
+// of getDb()'s return value the use case actually calls) is cast as
+// `as unknown as ReturnType<typeof getDb>` at the module boundary, and
+// individual chain links are viewed through `Mock` (via the `asMock` helper)
+// when a test needs to inspect raw call args — not a direct cast — since
+// TypeScript's strict mode rejects a direct cast when the mock only partially
+// overlaps the real type.
 //
 // Built with `vi.hoisted` so the same chain-link mocks are visible both to
 // the `vi.mock("@/lib/db", ...)` factory (which Vitest hoists above imports)
@@ -59,13 +60,14 @@ const hoisted = vi.hoisted(() => {
   };
 });
 
-import type { db } from "@/lib/db";
+import type { getDb } from "@/lib/db";
 
 vi.mock("@/lib/db", () => ({
-  db: {
-    select: hoisted.select,
-    transaction: hoisted.transaction,
-  } as unknown as typeof db,
+  getDb: () =>
+    ({
+      select: hoisted.select,
+      transaction: hoisted.transaction,
+    }) as unknown as ReturnType<typeof getDb>,
 }));
 
 import type { Mock } from "vitest";

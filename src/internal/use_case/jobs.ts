@@ -43,12 +43,11 @@ export async function enqueueHelloJob(
   return { ok: true, traceId };
 }
 
-// Minimal structural logger interface — deliberately not pino's own `Logger`
-// type (which pulls in a large surface this function doesn't need). Pino's
-// child logger satisfies this shape already (used by the Next app side), and
-// so does the Cloudflare Worker consumer's lightweight console-based logger
-// (src/worker/logger.ts), which isn't pino at all — pino isn't reliably
-// supported in the Workers runtime.
+// Minimal structural logger interface — a small subset of the shape both
+// src/lib/logger.ts (Next app side) and src/worker/logger.ts's
+// createJobLogger (Cloudflare Worker consumer) already satisfy, so either
+// can be passed in as `ctx.log` without this file depending on either
+// implementation.
 type JobLog = {
   info: (fields: Record<string, unknown>, msg: string) => void;
 };
