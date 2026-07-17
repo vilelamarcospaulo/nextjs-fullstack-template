@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CheckIcon } from "lucide-react";
@@ -8,7 +7,6 @@ import { signOut, authClient } from "@/lib/auth-client";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { SignInButton } from "@/app/auth-buttons";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,18 +14,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-
-// Lowercase/hyphenate a name into a URL-safe slug. Deliberately simple/inline
-// per the org actions convention (src/app/org/actions.ts) — not imported from
-// src/internal/domain/organization.ts, which someone else is building for a
-// different concern (validating org name/slug on the settings page).
-function slugify(name: string): string {
-  return name
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
 
 type NavUser = {
   name: string;
@@ -55,18 +41,9 @@ export function Navbar({ user }: { user: NavUser | null }) {
   const router = useRouter();
   const { data: organizations } = authClient.useListOrganizations();
   const { data: activeOrganization } = authClient.useActiveOrganization();
-  const [newOrgName, setNewOrgName] = useState("");
 
   async function handleSwitchOrganization(organizationId: string) {
     await authClient.organization.setActive({ organizationId });
-    router.refresh();
-  }
-
-  async function handleCreateOrganization() {
-    const name = newOrgName.trim();
-    if (!name) return;
-    await authClient.organization.create({ name, slug: slugify(name) });
-    setNewOrgName("");
     router.refresh();
   }
 
@@ -149,27 +126,11 @@ export function Navbar({ user }: { user: NavUser | null }) {
                     )}
                   </DropdownMenuItem>
                 ))}
-                {/* Plain div (not a DropdownMenuItem) so the text input can
-                    receive keystrokes without base-ui's menu typeahead/keyboard
-                    navigation intercepting them — same "display only, not a
-                    Menu item" reasoning as the identity header above. */}
-                <div className="flex items-center gap-1.5 px-1.5 py-1">
-                  <Input
-                    value={newOrgName}
-                    onChange={(e) => setNewOrgName(e.target.value)}
-                    onKeyDown={(e) => e.stopPropagation()}
-                    placeholder="New organization"
-                    aria-label="New organization name"
-                    className="h-7 text-xs"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleCreateOrganization}
-                    className="text-muted-foreground hover:text-foreground shrink-0 text-xs font-medium"
-                  >
-                    Create
-                  </button>
-                </div>
+                <DropdownMenuItem>
+                  <Link href="/org/new" className="w-full">
+                    New organization
+                  </Link>
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem>
                   <Link href="/profile" className="w-full">

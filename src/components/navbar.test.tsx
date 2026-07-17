@@ -317,26 +317,15 @@ describe("Navbar", () => {
       ).not.toBeInTheDocument();
     });
 
-    it("creating an organization slugifies the name, calls organization.create, then router.refresh", async () => {
-      vi.mocked(authClient.organization.create).mockResolvedValue(
-        undefined as never,
-      );
-
+    it("shows a 'New organization' link pointing to the dedicated create page", async () => {
       const user = userEvent.setup();
       render(<Navbar user={loggedInUser} />);
       await user.click(screen.getByRole("button", { name: "User menu" }));
 
-      const input = await screen.findByLabelText("New organization name");
-      await user.type(input, "Acme Corp!");
-      await user.click(screen.getByRole("button", { name: "Create" }));
-
-      await waitFor(() => {
-        expect(authClient.organization.create).toHaveBeenCalledWith({
-          name: "Acme Corp!",
-          slug: "acme-corp",
-        });
-        expect(mockRefresh).toHaveBeenCalledOnce();
+      const link = await screen.findByRole("link", {
+        name: "New organization",
       });
+      expect(link).toHaveAttribute("href", "/org/new");
     });
   });
 });
