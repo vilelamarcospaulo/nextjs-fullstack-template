@@ -15,6 +15,18 @@ export const helloJobPayloadSchema = z.object({
 
 export type HelloJobPayload = z.infer<typeof helloJobPayloadSchema>;
 
+// Every job is sent/received wrapped in this envelope so a traceId travels
+// with it automatically — no job type has to remember to thread it through
+// its own payload schema. See src/lib/trace.ts for what traceId means. Lives
+// here (not in src/lib/queue.ts) so both the producer (queue.ts, imported via
+// the "@/*" alias from the Next app) and the consumer (the Cloudflare Worker
+// under src/worker/, imported via a relative path) share one definition
+// without the Worker needing to import anything from queue.ts.
+export type JobEnvelope<T> = {
+  payload: T;
+  traceId: string;
+};
+
 export type ParseHelloJobPayloadResult =
   | { ok: true; value: HelloJobPayload }
   | { ok: false; errors: Partial<Record<"message", string>> };

@@ -1,15 +1,27 @@
+import { cloudflareTest } from "@cloudflare/vitest-pool-workers";
 import { defineConfig } from "vitest/config";
 
-// Two test projects so unit and integration runs can be selected independently
-// (npm run test:unit / test:integration) while `vitest run` executes both.
+// Four test projects so unit/integration/ui/worker runs can be selected
+// independently (npm run test:unit / test:integration / test:ui /
+// test:worker) while `vitest run` executes all of them.
 //
 // - unit: framework-free logic (pure utils, the domain validator, Drizzle-mocked
 //   use cases). No database, no global setup.
 // - integration: the real HTTP route handlers exercised end to end against a
 //   throwaway migrated Postgres DB. Only this project pays the DB setup cost.
+// - worker: the Cloudflare Worker queue consumer (src/worker/index.ts), run
+//   inside the actual Workers runtime via Miniflare (see below).
 //
-// Each project uses `extends: true` to inherit the root resolve (the "@/*"
-// alias via tsconfigPaths) and the shared node/globals test settings.
+// unit/integration/ui use `extends: true` to inherit the root resolve (the
+// "@/*" alias via tsconfigPaths) and the shared node/globals test settings.
+// worker does NOT extend the root config — the Workers runtime pool set up
+// by `cloudflareTest()` below rejects a non-default `test.environment`
+// (which the root config sets to "node" for the other projects; see
+// node_modules/@cloudflare/vitest-pool-workers's own pool-plugin check), and
+// it manages its own module resolution/pool wiring internally. Its test
+// files import src/worker/index.ts by relative path (matching that file's
+// own no-"@/*"-alias convention, since wrangler's bundler doesn't resolve
+// that alias either), so it doesn't need resolve.tsconfigPaths.
 export default defineConfig({
   resolve: { tsconfigPaths: true },
   // JSX/TSX is transformed by Vitest 4's built-in oxc (automatic runtime, from
@@ -50,7 +62,7 @@ export default defineConfig({
         extends: true,
         test: {
           name: "integration",
-          include: ["src/app/**/*.test.ts", "src/worker/**/*.test.ts"],
+          include: ["src/app/**/*.test.ts"],
           // Every test file's beforeEach calls resetDb(), a full-table wipe
           // against the ONE shared `app_test` database (see
           // test/global-setup.ts) — there's no per-file DB isolation. Running
@@ -85,6 +97,24 @@ export default defineConfig({
           environment: "jsdom",
           include: ["src/**/*.test.tsx"],
           setupFiles: ["./test/setup-ui.ts"],
+        },
+      },
+      {
+        // No `extends: true` — see the comment at the top of this file for
+        // why. `cloudflareTest()` is a Vite plugin (not a `test.pool`/
+        // `test.poolOptions` value) that wires up the Miniflare-backed
+        // Workers pool itself; it reads wrangler.toml's `main` and
+        // `[[queues.consumers]]` entries so `createMessageBatch()` in test
+        // files can simulate the "hello"/"hello-dlq" queues declared there.
+        plugins: [
+          cloudflareTest({
+            wrangler: { configPath: "./wrangler.toml" },
+          }),
+        ],
+        test: {
+          name: "worker",
+          globals: true,
+          include: ["src/worker/**/*.test.ts"],
         },
       },
     ],

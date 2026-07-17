@@ -11,11 +11,12 @@ export type GreetingResult =
   { ok: true; data: string } | { ok: false; error: string };
 
 // Discriminated-union result type for the job-queue demo action. Same shape
-// convention as GreetingResult, just carrying the pg-boss job id and the
-// traceId the job chain was tagged with (see src/lib/trace.ts) on success.
+// convention as GreetingResult, just carrying the traceId the job chain was
+// tagged with (see src/lib/trace.ts) on success. Cloudflare Queues' HTTP push
+// API doesn't hand back a message id on enqueue, so traceId is the only
+// correlation id available here.
 export type JobActionResult =
-  | { ok: true; data: { jobId: string; traceId: string } }
-  | { ok: false; error: string };
+  { ok: true; data: { traceId: string } } | { ok: false; error: string };
 
 // Maximum characters accepted for the `name` argument. Anything longer is
 // rejected before any further processing — keeps payloads small and prevents
@@ -62,8 +63,8 @@ export async function generateGreeting(name: string): Promise<GreetingResult> {
 // the queue.
 const MAX_JOB_MESSAGE_LENGTH = 200;
 
-// Server Action: enqueues a trivial "hello" job onto the Postgres-backed
-// queue (pg-boss), processed asynchronously by a separate worker process.
+// Server Action: enqueues a trivial "hello" job onto Cloudflare Queues,
+// processed asynchronously by a separate Cloudflare Worker.
 // Named `submitHelloJob` (rather than `enqueueHelloJob`) to avoid colliding
 // with the use-case function of the same name imported above.
 //
@@ -102,5 +103,5 @@ export async function submitHelloJob(
   }
 
   // ── 5. Success ──────────────────────────────────────────────────────────────
-  return { ok: true, data: { jobId: result.jobId, traceId: result.traceId } };
+  return { ok: true, data: { traceId: result.traceId } };
 }

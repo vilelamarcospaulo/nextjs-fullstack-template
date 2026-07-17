@@ -10,6 +10,11 @@
 #   - BETTER_AUTH_URL is set to https://${DOMAIN} (public TLS URL)
 #   - Requires a .env file alongside this compose file (see .env.example)
 #   - Secrets: ${HOME}/.npmrc must exist on the VPS for private-registry builds
+#   - The background-job queue consumer is NOT part of this stack: it deploys
+#     independently as a Cloudflare Worker via `wrangler deploy` (see
+#     deploy/README.md). The `app` service is only the job *producer* — it
+#     pushes to Cloudflare Queues over HTTP using the CLOUDFLARE_* env vars
+#     below.
 # =============================================================================
 
 services:
@@ -61,6 +66,13 @@ services:
       # Must match the public HTTPS domain used in Google OAuth redirect URIs:
       #   https://${DOMAIN}/api/auth/callback/google
       BETTER_AUTH_URL: "https://${DOMAIN}"
+      # Cloudflare Queues — read from .env, used by src/lib/queue.ts to push
+      # messages to the `hello` queue over HTTP. Consumed by the separately
+      # deployed Cloudflare Worker (`wrangler deploy`), not by a service in
+      # this compose stack.
+      CLOUDFLARE_ACCOUNT_ID: "${CLOUDFLARE_ACCOUNT_ID}"
+      CLOUDFLARE_API_TOKEN: "${CLOUDFLARE_API_TOKEN}"
+      CLOUDFLARE_HELLO_QUEUE_ID: "${CLOUDFLARE_HELLO_QUEUE_ID}"
     # Port 3000 is intentionally NOT published to the host.
     # nginx reaches it over appnet. expose is informational only.
     expose:
@@ -83,60 +95,6 @@ services:
         - node
         - -e
         - "require('http').get('http://127.0.0.1:3000/', (r) => process.exit(r.statusCode >= 200 && r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
-
-  # ---------------------------------------------------------------------------
-  # worker — background job consumer (pg-boss over the same Postgres instance
-  # as `app`). A separate long-running process from `app`, NOT an HTTP server:
-  # it polls/consumes queued jobs (e.g. the `hello` demo queue) and exits
-  # jobs via boss.work(). Not published to the host — internal only, like
-  # `app`/`otel-collector`/`jaeger`. Traces are tagged with a distinct
-  # OTEL_SERVICE_NAME so they're distinguishable from `app` in Jaeger.
-  # ---------------------------------------------------------------------------
-  worker:
-    build:
-      context: ../..
-      dockerfile: Dockerfile
-      target: worker
-      secrets:
-        - npmrc
-    env_file: .env
-    # DATABASE_URL is read from .env (postgresql://<user>:<pass>@postgres:5432/<db>).
-    environment:
-      NODE_ENV: production
-      # WORKER_CONCURRENCY is optional; falls back to the worker's own default
-      # (5) if unset in .env. See deploy/production/.env.example.
-      WORKER_CONCURRENCY: "${WORKER_CONCURRENCY:-5}"
-      WORKER_HEALTH_PORT: "3100"
-      # OTEL: the worker opts in when this endpoint is set; the collector is
-      # reachable by its service name over the internal appnet. Distinct
-      # OTEL_SERVICE_NAME from `app` so Jaeger shows it as a separate service.
-      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4318"
-      OTEL_SERVICE_NAME: starter-kit-worker
-      OTEL_SERVICE_VERSION: "0.1.0"
-      LOG_LEVEL: info
-    # No ports published — internal only, same as `app`.
-    depends_on:
-      postgres:
-        condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
-      otel-collector:
-        condition: service_started
-    networks:
-      - appnet
-    # Node-based health check — no curl/wget required in bookworm-slim.
-    # Mirrors the Dockerfile HEALTHCHECK, hitting the worker's /healthz
-    # endpoint instead of the app's `/`.
-    healthcheck:
-      test:
-        - CMD
-        - node
-        - -e
-        - "require('http').get('http://127.0.0.1:3100/healthz', (r) => process.exit(r.statusCode >= 200 && r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"
       interval: 30s
       timeout: 5s
       retries: 3

@@ -17,6 +17,10 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Generated test coverage report.
     "coverage/**",
+    // wrangler's local build/state cache (bundled Worker output, Miniflare
+    // state) — not source, and its bundle concatenates the whole app graph
+    // into one file that isn't meaningfully lintable anyway.
+    ".wrangler/**",
   ]),
 ]);
 

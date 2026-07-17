@@ -1,0 +1,12 @@
+# wrangler-only local vars for `wrangler dev` (src/worker/, the Cloudflare
+# Worker consumer). Copy this file to `.dev.vars` — NOT `.env`/`.env.local`,
+# those are read by the Next app, not by wrangler. `.dev.vars` is gitignored
+# and is never read by `wrangler deploy`, so this can never leak into a real
+# deployment.
+#
+# Enables src/worker/index.ts's fetch() handler, which lets the Next app's
+# producer (src/lib/queue.ts) push jobs into this Worker's locally-simulated
+# "hello" queue over plain HTTP instead of Cloudflare's real API — no
+# Cloudflare account needed for local dev. Pair with QUEUE_LOCAL_PUSH_URL in
+# the app's own .env.local (see .env.example).
+LOCAL_DEV_PUSH_ENABLED=true

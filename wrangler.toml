@@ -1,0 +1,42 @@
+# Cloudflare Worker config for this app's Cloudflare Queues setup.
+#
+# In production, src/lib/queue.ts (the Next app) is the only producer, and it
+# pushes messages via Cloudflare's real HTTP API — it does NOT go through this
+# Worker. The [[queues.producers]] binding below exists purely so this same
+# Worker can also simulate that HTTP push *locally*: its fetch() handler
+# (src/worker/index.ts) forwards a POST body onto the HELLO_QUEUE binding,
+# which `wrangler dev` runs entirely through Miniflare — no real Cloudflare
+# account, login, or deployed queue needed for local dev. That fetch handler
+# is gated behind LOCAL_DEV_PUSH_ENABLED, which is only ever set via the
+# gitignored .dev.vars (see .dev.vars.example) — `wrangler deploy` never
+# reads .dev.vars, so a real deployment never exposes it.
+#
+# max_retries = 5 / max_batch_size = 5 mirror the old pg-boss config's retry
+# limit and worker concurrency (see src/worker/env.ts's former
+# WORKER_CONCURRENCY default, and the pg-boss retry setup in
+# src/lib/queue.ts). The "hello-dlq" consumer has max_retries = 0 and no
+# further dead_letter_queue — it's a terminal sink, matching the old code's
+# DLQ subscription that only logged job_dead_lettered for visibility and
+# never reprocessed.
+#
+# One-time setup required before a real (non-local) deploy:
+#   wrangler queues create hello
+#   wrangler queues create hello-dlq
+
+name = "starter-kit-worker"
+main = "src/worker/index.ts"
+compatibility_date = "2026-07-17"
+
+[[queues.producers]]
+queue = "hello"
+binding = "HELLO_QUEUE"
+
+[[queues.consumers]]
+queue = "hello"
+max_retries = 5
+dead_letter_queue = "hello-dlq"
+max_batch_size = 5
+
+[[queues.consumers]]
+queue = "hello-dlq"
+max_retries = 0
