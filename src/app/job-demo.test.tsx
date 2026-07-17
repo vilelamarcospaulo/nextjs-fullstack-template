@@ -34,11 +34,11 @@ describe("JobDemo", () => {
     expect(input).toHaveValue("Hello there");
   });
 
-  it("submit calls submitHelloJob once with the typed message and renders the job id", async () => {
+  it("submit calls submitHelloJob once with the typed message and renders the trace id", async () => {
     const user = userEvent.setup();
     const okResult: JobActionResult = {
       ok: true,
-      data: { jobId: "abc-123", traceId: "trace-abc" },
+      data: { traceId: "trace-abc" },
     };
     mockSubmitHelloJob.mockResolvedValue(okResult);
 
@@ -50,11 +50,10 @@ describe("JobDemo", () => {
     expect(mockSubmitHelloJob).toHaveBeenCalledTimes(1);
     expect(mockSubmitHelloJob).toHaveBeenCalledWith("Hi");
 
-    await screen.findByText(/Job enqueued: abc-123/);
+    await screen.findByText(/Job enqueued — trace: trace-abc/);
     const pre = document.querySelector("pre");
     expect(pre).toBeInTheDocument();
-    expect(pre).toHaveTextContent("Job enqueued: abc-123");
-    expect(pre).toHaveTextContent("Trace: trace-abc");
+    expect(pre).toHaveTextContent("Job enqueued — trace: trace-abc");
   });
 
   it("shows pending label and disabled button while action is unresolved, then re-enables", async () => {
@@ -74,7 +73,7 @@ describe("JobDemo", () => {
     const btn = screen.getByRole("button", { name: "Enqueuing…" });
     expect(btn).toBeDisabled();
 
-    resolve!({ ok: true, data: { jobId: "xyz-789", traceId: "trace-xyz" } });
+    resolve!({ ok: true, data: { traceId: "trace-xyz" } });
 
     await waitFor(() =>
       expect(

@@ -25,7 +25,7 @@ Loosely clean-architecture, framework-agnostic core wrapped by a thin Next.js bo
 - `src/utils/` — small pure helpers with no dependencies on the layers above.
 - `src/components/` — UI (shadcn/ui-based `components/ui`, plus `navbar.tsx`, `theme-toggle.tsx`, `providers.tsx`).
 
-**Import-alias rule**: `src/worker/index.ts` runs via plain `node` (no bundler, no path-alias resolution), so any file it imports transitively — `internal/domain`, `internal/use_case`, `lib/queue.ts` — must use **relative imports with explicit `.ts` extensions**, never the `@/*` alias. `src/app/**` code can use `@/*` freely.
+**Import-alias rule**: `src/worker/index.ts` is a Cloudflare Worker, bundled by `wrangler`/esbuild rather than run via plain `node` — but the same constraint applies for a different reason: wrangler's esbuild bundling doesn't resolve the `@/*` path alias out of the box. So `src/worker/index.ts` and anything it imports transitively — `internal/domain`, `internal/use_case`, and now nothing from `lib/queue.ts`, since the Worker doesn't import the producer client at all — must still use **relative imports with explicit `.ts` extensions**, never the `@/*` alias. `src/app/**` code can use `@/*` freely.
 
 # Auth
 
@@ -45,9 +45,11 @@ Drizzle ORM with `drizzle-orm/node-postgres` — uses the `pg` driver to connect
 
 # Background jobs
 
-`src/worker/index.ts` is a separate long-running process from the Next app (`npm run worker`, or `npm run worker:dev` for `--watch`), sharing `src/lib/queue.ts` (pg-boss, singleton cached on `globalThis`, same pattern as the Drizzle client). Queues are declared idempotently in `initQueue()`.
+The Next app is the job **producer**: `src/lib/queue.ts` pushes messages to Cloudflare Queues via the official `cloudflare` SDK (`queues.messages.push`, listed in `next.config.ts`'s `serverExternalPackages`), reading `CLOUDFLARE_ACCOUNT_ID`/`CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_HELLO_QUEUE_ID` from `process.env`. When `QUEUE_LOCAL_PUSH_URL` is set instead (local dev only — see `.env.example`), it bypasses the SDK with a plain `fetch` against the Worker's own local-only push simulation, so the whole producer/consumer loop runs offline with no Cloudflare account.
 
-Every job is wrapped in a `JobEnvelope<T> = { payload, traceId }` (`sendJob`/`workJob` in `src/lib/queue.ts`). `src/lib/trace.ts`'s `newTraceId()` starts a chain (`crypto.randomUUID()`); pass an existing `ctx.traceId` through `enqueueHelloJob(input, { traceId })` to continue a chain across job A → job B. `workJob` binds the traceId into a pino child logger (`logger.child({ traceId, jobId, queue })`), so an HTTP request and every job it triggers are grepable by one traceId across processes. Follow this pattern for any new job type — don't invent a separate correlation-id scheme.
+The **consumer** is a separate Cloudflare Worker, `src/worker/index.ts`, deployed independently via `wrangler deploy` (config in the root `wrangler.toml`) — it is no longer a Node process run alongside the app. `wrangler deploy --dry-run` bundles cleanly (esbuild tree-shakes the producer's `cloudflare` SDK import out, since the Worker only reaches `processHelloJob`, never `sendJob`).
+
+Every job is still wrapped in a `JobEnvelope<T> = { payload, traceId }`, now defined in `src/internal/domain/jobs.ts` and shared by both the producer (`src/lib/queue.ts`) and the consumer (`src/worker/index.ts`). `src/lib/trace.ts`'s `newTraceId()` starts a chain (`crypto.randomUUID()`); pass an existing `ctx.traceId` through `enqueueHelloJob(input, { traceId })` to continue a chain across job A → job B. The consumer binds the traceId into a pino child logger (`logger.child({ traceId, jobId, queue })`), so an HTTP request and every job it triggers are grepable by one traceId across processes. This concept is unchanged and no longer pg-boss-specific — follow it for any new job type, don't invent a separate correlation-id scheme. Retry/backoff/DLQ behavior is now configured natively in `wrangler.toml`'s `queues.consumers` block (`max_retries`, `dead_letter_queue`) instead of in application code.
 
 # Observability
 
@@ -71,4 +73,4 @@ Every job is wrapped in a `JobEnvelope<T> = { payload, traceId }` (`sendJob`/`wo
 
 - Commit messages follow Conventional Commits (`feat(scope): ...`, `fix(scope): ...`, `chore: ...`).
 - CI (`.github/workflows/ci.yaml`) runs `lint`, `format:check`, `typecheck`, `test`, `build` as a matrix against a real Postgres service container. Drizzle requires no code-generation step before these tasks (the schema is plain TypeScript).
-- Docker: `Dockerfile` has `runner` (app), `migrator` (Drizzle migrations), and `worker` (background jobs) targets; see `README.md` and `deploy/README.md` for local (docker-compose + Jaeger) and production (VPS + nginx/certbot) setups.
+- Docker: `Dockerfile` has `runner` (app) and `migrator` (Drizzle migrations) targets; see `README.md` and `deploy/README.md` for local (docker-compose + Jaeger) and production (VPS + nginx/certbot) setups. The background-job queue consumer is no longer a Docker target — it deploys independently as a Cloudflare Worker via `wrangler deploy`.

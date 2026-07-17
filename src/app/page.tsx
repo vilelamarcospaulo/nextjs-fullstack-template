@@ -76,8 +76,8 @@ export default async function Home() {
           <CardHeader>
             <CardTitle>Async Job</CardTitle>
             <CardDescription>
-              Enqueue a background job onto a Postgres-backed queue (pg-boss),
-              processed asynchronously by a separate worker process.
+              Enqueue a background job onto Cloudflare Queues, processed
+              asynchronously by a separate Cloudflare Worker.
             </CardDescription>
           </CardHeader>
           <CardContent>

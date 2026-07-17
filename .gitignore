@@ -34,9 +34,16 @@ yarn-error.log*
 .env*
 !.env.example
 
+# wrangler local-only vars (never read by `wrangler deploy`)
+.dev.vars*
+!.dev.vars.example
+
 # production deployment secrets
 deploy/production/.env
 deploy/**/.env
+
+# wrangler
+.wrangler
 
 # vercel
 .vercel

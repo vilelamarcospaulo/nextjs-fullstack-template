@@ -26,7 +26,14 @@
     "paths": {
       "@/*": ["./src/*"]
     },
-    "types": ["vitest/globals"]
+    // "@cloudflare/vitest-pool-workers/types" adds the ambient
+    // `declare module "cloudflare:test"` typings (createMessageBatch,
+    // getQueueResult, etc.) used by src/worker/index.test.ts — needed
+    // because this repo has one tsconfig.json for the whole program, and
+    // the "cloudflare:test" virtual module specifier is only resolvable at
+    // the type level via this "types" array entry (it isn't reachable
+    // through any import graph the way a normal .d.ts is).
+    "types": ["vitest/globals", "@cloudflare/vitest-pool-workers/types"]
   },
   "include": [
     "next-env.d.ts",

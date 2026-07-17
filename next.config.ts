@@ -14,6 +14,11 @@ const nextConfig: NextConfig = {
   //      global trace context won't line up.
   // pg and pino are already in Next's default external list, so the
   // pg/Pino instrumentations attach without listing them here.
+  //
+  // "cloudflare" (src/lib/queue.ts's producer client, see that file) is a
+  // large, Node-oriented, zero-runtime-dependency SDK covering the entire
+  // Cloudflare API surface — no reason to make Next's bundler trace through
+  // all of it for the one `queues.messages.push` call this app uses.
   serverExternalPackages: [
     "@opentelemetry/api",
     "@opentelemetry/sdk-node",
@@ -25,6 +30,7 @@ const nextConfig: NextConfig = {
     "@opentelemetry/semantic-conventions",
     "@opentelemetry/instrumentation-pino",
     "@opentelemetry/instrumentation-pg",
+    "cloudflare",
   ],
 };
 

@@ -1,91 +1,137 @@
-// Worker process entry point. Run via `node src/worker/index.ts` (Node's
-// native TypeScript stripping — no bundler, no path-alias resolution), so
-// every import in this file, and in every file it imports, must be relative
-// with an explicit ".ts" extension. See src/lib/queue.ts for the same
-// convention, and CLAUDE.md / the plan doc for why.
-
-// OpenTelemetry must be started before anything that touches pino/pg at
-// require time (its instrumentations patch those modules' internals when
-// THEY are first required, not when the SDK is started). This mirrors the
-// exact gating in src/instrumentation.ts: only start the Node SDK when an
-// OTLP endpoint is configured, and do it as the very first thing, before the
-// static imports below are evaluated.
-if (process.env.OTEL_EXPORTER_OTLP_ENDPOINT) {
-  await import("../instrumentation.node.ts");
-}
-
-import { loadWorkerEnv } from "./env.ts";
-import { startHealthServer } from "./health-server.ts";
-import { getQueue, workJob } from "../lib/queue.ts";
-import { HELLO_DLQ, HELLO_QUEUE } from "../internal/domain/jobs.ts";
+// Cloudflare Worker that consumes the "hello" and "hello-dlq" queues,
+// replacing the old Node pg-boss worker process (see git history for the
+// previous `node src/worker/index.ts` long-running-process version). Wired
+// up via the [[queues.consumers]] entries in wrangler.toml at the repo root.
+//
+// Ack/retry semantics are per-message, not per-batch: each message is
+// ack()'d on success or retry()'d on failure individually, and a failure is
+// caught and logged rather than rethrown across the whole batch — so one bad
+// message doesn't block or force a retry of its batch-mates.
+//
+// OpenTelemetry / distributed tracing is out of scope here: doing it
+// properly would need a third-party Workers OTel shim, which isn't a current
+// dependency. `traceId` still flows through the envelope and every log line
+// below, though, so grep-based correlation across the Next app and this
+// Worker keeps working — just without span-level tracing.
+//
+// Imports stay relative with explicit ".ts" extensions, same convention the
+// old Node worker used (previously justified by "runs via plain node, no
+// bundler, no path-alias resolution"; now justified by "wrangler's esbuild
+// bundling doesn't resolve the '@/*' path alias out of the box" — same
+// practical outcome, different reason).
+import type {
+  ExecutionContext,
+  MessageBatch,
+  Queue,
+} from "@cloudflare/workers-types";
+import {
+  HELLO_DLQ,
+  HELLO_QUEUE,
+  type HelloJobPayload,
+  type JobEnvelope,
+} from "../internal/domain/jobs.ts";
 import { processHelloJob } from "../internal/use_case/jobs.ts";
-import { logger } from "../lib/logger.ts";
-import type { HelloJobPayload } from "../internal/domain/jobs.ts";
+import { createJobLogger } from "./logger.ts";
 
-async function main() {
-  const env = loadWorkerEnv();
-  const boss = await getQueue();
+type Env = {
+  // Producer binding onto the same "hello" queue this Worker also consumes
+  // (see [[queues.producers]] in wrangler.toml). In production this binding
+  // is never actually exercised — src/lib/queue.ts pushes via Cloudflare's
+  // real HTTP API instead, bypassing this Worker entirely. It exists so
+  // fetch() below can simulate that HTTP push locally through Miniflare.
+  HELLO_QUEUE: Queue<JobEnvelope<HelloJobPayload>>;
+  // Only ever set locally via the gitignored .dev.vars (see
+  // .dev.vars.example) — `wrangler deploy` doesn't read .dev.vars, so this
+  // is always undefined in a real deployment, keeping fetch() a 404 there.
+  LOCAL_DEV_PUSH_ENABLED?: string;
+};
 
-  let ready = false;
+const worker = {
+  // Local-dev-only stand-in for Cloudflare's real "push message" HTTP API
+  // (POST /accounts/{id}/queues/{id}/messages), so src/lib/queue.ts can be
+  // pointed at this Worker instead of the real Cloudflare API when
+  // QUEUE_LOCAL_PUSH_URL is set — letting the whole producer/consumer loop
+  // run offline under `wrangler dev` with no Cloudflare account. Mirrors the
+  // real API's request/response shape (`{ body: <envelope> }` in, `{success:
+  // true}` out) so src/lib/queue.ts doesn't need separate parsing logic per
+  // target. Gated behind LOCAL_DEV_PUSH_ENABLED (see the Env type above) —
+  // without it, this always 404s, including in any real deployment.
+  async fetch(request: Request, env: Env): Promise<Response> {
+    if (env.LOCAL_DEV_PUSH_ENABLED !== "true") {
+      return new Response("Not Found", { status: 404 });
+    }
+    if (request.method !== "POST") {
+      return new Response("Method Not Allowed", { status: 405 });
+    }
 
-  // job_started/job_completed/job_failed logging (bound to traceId/jobId)
-  // happens generically inside workJob (src/lib/queue.ts) — the handler here
-  // only needs the actual business logic.
-  await workJob<HelloJobPayload>(
-    HELLO_QUEUE,
-    { batchSize: env.WORKER_CONCURRENCY },
-    async (payload, ctx) => {
-      await processHelloJob(payload, ctx);
-    },
-  );
+    const { body } = (await request.json()) as {
+      body: JobEnvelope<HelloJobPayload>;
+    };
+    await env.HELLO_QUEUE.send(body);
 
-  // Pure visibility into terminally-failed jobs — no re-processing / re-drive
-  // logic here. Re-driving dead-lettered jobs is an intentional scope
-  // boundary for this scaffold; a future feature can add an operator-facing
-  // re-drive flow on top of pg-boss's `redrive()` API.
-  await workJob<HelloJobPayload>(
-    HELLO_DLQ,
-    { batchSize: 1 },
-    async (payload, ctx) => {
-      ctx.log.error({ payload }, "job_dead_lettered");
-    },
-  );
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  },
 
-  ready = true;
+  async queue(
+    batch: MessageBatch<JobEnvelope<HelloJobPayload>>,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<void> {
+    // Neither binding is used today — no producer binding (see above) and no
+    // waitUntil()-scheduled work in this handler — but both stay in the
+    // signature so it keeps matching Cloudflare's queue() handler shape (and
+    // what the test file's direct call passes) rather than relying on TS's
+    // fewer-params structural typing, which callers other than "cloudflare:test"'s
+    // simulated invocation wouldn't get.
+    void env;
+    void ctx;
 
-  const healthServer = startHealthServer(env.WORKER_HEALTH_PORT, () => ready);
+    if (batch.queue === HELLO_QUEUE) {
+      for (const message of batch.messages) {
+        const { payload, traceId } = message.body;
+        const log = createJobLogger({
+          traceId,
+          jobId: message.id,
+          queue: batch.queue,
+        });
 
-  logger.info({}, "worker_started");
-
-  let shuttingDown = false;
-  const shutdown = async (signal: NodeJS.Signals) => {
-    if (shuttingDown) {
+        log.info({}, "job_started");
+        try {
+          await processHelloJob(payload, { traceId, jobId: message.id, log });
+          log.info({}, "job_completed");
+          message.ack();
+        } catch (error) {
+          log.error(
+            { err: error instanceof Error ? error.message : String(error) },
+            "job_failed",
+          );
+          message.retry();
+        }
+      }
       return;
     }
-    shuttingDown = true;
 
-    logger.info({ signal }, "worker_shutting_down");
-    ready = false;
+    if (batch.queue === HELLO_DLQ) {
+      // Pure visibility into terminally-failed jobs — no re-processing /
+      // re-drive logic here, matching the old worker's DLQ subscription.
+      // Re-driving dead-lettered jobs is an intentional scope boundary for
+      // this scaffold.
+      for (const message of batch.messages) {
+        const { payload, traceId } = message.body;
+        const log = createJobLogger({
+          traceId,
+          jobId: message.id,
+          queue: batch.queue,
+        });
 
-    await boss.stop({ graceful: true });
-    healthServer.close();
+        log.error({ payload }, "job_dead_lettered");
+        message.ack();
+      }
+      return;
+    }
+  },
+};
 
-    // Deliberately no process.exit() call here: once .stop({ graceful: true
-    // }) resolves and the health server is closed, there is nothing left
-    // holding the event loop open, so Node exits naturally. Calling
-    // process.exit() would risk cutting off any in-flight async work (e.g.
-    // OTel's own SIGTERM/SIGINT flush handler registered in
-    // instrumentation.node.ts) that hasn't finished yet.
-  };
-
-  for (const signal of ["SIGTERM", "SIGINT"] as const) {
-    process.once(signal, () => {
-      void shutdown(signal);
-    });
-  }
-}
-
-main().catch((error) => {
-  logger.error({ err: error }, "worker_startup_failed");
-  process.exit(1);
-});
+export default worker;
