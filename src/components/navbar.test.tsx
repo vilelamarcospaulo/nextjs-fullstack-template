@@ -1,7 +1,7 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useRouter } from "next/navigation";
-import { signOut } from "@/lib/auth-client";
+import { signOut, authClient } from "@/lib/auth-client";
 import { Navbar } from "@/components/navbar";
 
 vi.mock("next/navigation", () => ({ useRouter: vi.fn() }));
@@ -35,6 +35,14 @@ vi.mock("@/components/ui/avatar", () => ({
 vi.mock("@/lib/auth-client", () => ({
   signIn: { social: vi.fn() },
   signOut: vi.fn(),
+  authClient: {
+    useListOrganizations: vi.fn(),
+    useActiveOrganization: vi.fn(),
+    organization: {
+      setActive: vi.fn(),
+      create: vi.fn(),
+    },
+  },
 }));
 
 vi.mock("next-themes", () => ({
@@ -75,6 +83,17 @@ describe("Navbar", () => {
       refresh: mockRefresh,
     } as unknown as ReturnType<typeof useRouter>);
     vi.mocked(signOut).mockResolvedValue(undefined as never);
+
+    // Default org-switcher state: no orgs, no active org. Individual tests
+    // override with vi.mocked(...).mockReturnValue(...) as needed. Cast
+    // through `unknown` per the repo's partial-mock convention (these mocks
+    // only implement `data`, not the full nanostore-query return shape).
+    vi.mocked(authClient.useListOrganizations).mockReturnValue({
+      data: [],
+    } as unknown as ReturnType<typeof authClient.useListOrganizations>);
+    vi.mocked(authClient.useActiveOrganization).mockReturnValue({
+      data: null,
+    } as unknown as ReturnType<typeof authClient.useActiveOrganization>);
   });
 
   describe("logged out (user=null)", () => {
@@ -123,9 +142,16 @@ describe("Navbar", () => {
       "name=%j email=%j → fallback text %j",
       async (name, email, expected) => {
         render(<Navbar user={{ name, email, image: null }} />);
-        // AvatarFallback renders via base-ui; find it by its text content
+        // Scoped to the fallback element specifically — for a 1-character
+        // name the header bar's own name text can coincide with the fallback
+        // initial (e.g. name "X" → both render "X"), so an unscoped
+        // getByText would match twice.
         await waitFor(() => {
-          expect(screen.getByText(expected)).toBeInTheDocument();
+          expect(
+            screen.getByText(expected, {
+              selector: '[data-slot="avatar-fallback"]',
+            }),
+          ).toBeInTheDocument();
         });
       },
     );
@@ -145,6 +171,26 @@ describe("Navbar", () => {
       ).toBeInTheDocument();
     });
 
+    it("shows the user's name in the header bar without opening the menu", () => {
+      render(<Navbar user={loggedInUser} />);
+      expect(screen.getByText("Marcos Vilela")).toBeInTheDocument();
+    });
+
+    it("does not show an org name in the header bar when there is no active org", () => {
+      render(<Navbar user={loggedInUser} />);
+      // Default mock state (set in the top-level beforeEach) is no active org.
+      expect(screen.queryByText("Org One")).not.toBeInTheDocument();
+    });
+
+    it("shows the active org's name next to the username in the header bar", () => {
+      vi.mocked(authClient.useActiveOrganization).mockReturnValue({
+        data: { id: "org-1", name: "Org One", slug: "org-one" },
+      } as unknown as ReturnType<typeof authClient.useActiveOrganization>);
+
+      render(<Navbar user={loggedInUser} />);
+      expect(screen.getByText("Org One")).toBeInTheDocument();
+    });
+
     it("'Profile' and 'Sign out' are NOT visible before opening the menu", () => {
       render(<Navbar user={loggedInUser} />);
       expect(screen.queryByText("Profile")).not.toBeInTheDocument();
@@ -157,10 +203,13 @@ describe("Navbar", () => {
 
       await user.click(screen.getByRole("button", { name: "User menu" }));
 
-      expect(await screen.findByText("Marcos Vilela")).toBeInTheDocument();
-      expect(await screen.findByText("marcos@example.com")).toBeInTheDocument();
+      // Scoped to the menu popup — "Marcos Vilela" also renders in the
+      // always-visible header bar, so an unscoped query would match twice.
+      const menu = await screen.findByRole("menu");
+      expect(within(menu).getByText("Marcos Vilela")).toBeInTheDocument();
+      expect(within(menu).getByText("marcos@example.com")).toBeInTheDocument();
 
-      const profileLink = await screen.findByRole("link", { name: "Profile" });
+      const profileLink = within(menu).getByRole("link", { name: "Profile" });
       expect(profileLink).toBeInTheDocument();
       expect(profileLink).toHaveAttribute("href", "/profile");
 
@@ -190,6 +239,104 @@ describe("Navbar", () => {
       // The mocked AvatarImage renders a real <img> when src is provided
       const img = screen.getByRole("img", { name: loggedInUser.name });
       expect(img).toHaveAttribute("src", "https://example.com/avatar.png");
+    });
+  });
+
+  describe("org switcher", () => {
+    const loggedInUser = {
+      name: "Marcos Vilela",
+      email: "marcos@example.com",
+      image: null as string | null,
+    };
+
+    it("lists the user's organizations and marks the active one", async () => {
+      vi.mocked(authClient.useListOrganizations).mockReturnValue({
+        data: [
+          { id: "org-1", name: "Org One" },
+          { id: "org-2", name: "Org Two" },
+        ],
+      } as unknown as ReturnType<typeof authClient.useListOrganizations>);
+      vi.mocked(authClient.useActiveOrganization).mockReturnValue({
+        data: { id: "org-2", name: "Org Two" },
+      } as unknown as ReturnType<typeof authClient.useActiveOrganization>);
+
+      const user = userEvent.setup();
+      render(<Navbar user={loggedInUser} />);
+      await user.click(screen.getByRole("button", { name: "User menu" }));
+
+      // Scoped to the menu — the active org ("Org Two") also renders in the
+      // always-visible header bar, so an unscoped query would match twice.
+      const menu = await screen.findByRole("menu");
+      expect(within(menu).getByText("Org One")).toBeInTheDocument();
+      expect(within(menu).getByText("Org Two")).toBeInTheDocument();
+    });
+
+    it("clicking an organization calls setActive with its id, then router.refresh", async () => {
+      vi.mocked(authClient.useListOrganizations).mockReturnValue({
+        data: [{ id: "org-1", name: "Org One" }],
+      } as unknown as ReturnType<typeof authClient.useListOrganizations>);
+      vi.mocked(authClient.organization.setActive).mockResolvedValue(
+        undefined as never,
+      );
+
+      const user = userEvent.setup();
+      render(<Navbar user={loggedInUser} />);
+      await user.click(screen.getByRole("button", { name: "User menu" }));
+      await user.click(await screen.findByText("Org One"));
+
+      await waitFor(() => {
+        expect(authClient.organization.setActive).toHaveBeenCalledWith({
+          organizationId: "org-1",
+        });
+        expect(mockRefresh).toHaveBeenCalledOnce();
+      });
+    });
+
+    it("shows an 'Organization settings' link to the active org's slug when one is set", async () => {
+      vi.mocked(authClient.useActiveOrganization).mockReturnValue({
+        data: { id: "org-2", name: "Org Two", slug: "org-two" },
+      } as unknown as ReturnType<typeof authClient.useActiveOrganization>);
+
+      const user = userEvent.setup();
+      render(<Navbar user={loggedInUser} />);
+      await user.click(screen.getByRole("button", { name: "User menu" }));
+
+      const link = await screen.findByRole("link", {
+        name: "Organization settings",
+      });
+      expect(link).toHaveAttribute("href", "/org/org-two");
+    });
+
+    it("does not show an 'Organization settings' link when there is no active org", async () => {
+      const user = userEvent.setup();
+      render(<Navbar user={loggedInUser} />);
+      await user.click(screen.getByRole("button", { name: "User menu" }));
+
+      expect(
+        screen.queryByRole("link", { name: "Organization settings" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("creating an organization slugifies the name, calls organization.create, then router.refresh", async () => {
+      vi.mocked(authClient.organization.create).mockResolvedValue(
+        undefined as never,
+      );
+
+      const user = userEvent.setup();
+      render(<Navbar user={loggedInUser} />);
+      await user.click(screen.getByRole("button", { name: "User menu" }));
+
+      const input = await screen.findByLabelText("New organization name");
+      await user.type(input, "Acme Corp!");
+      await user.click(screen.getByRole("button", { name: "Create" }));
+
+      await waitFor(() => {
+        expect(authClient.organization.create).toHaveBeenCalledWith({
+          name: "Acme Corp!",
+          slug: "acme-corp",
+        });
+        expect(mockRefresh).toHaveBeenCalledOnce();
+      });
     });
   });
 });

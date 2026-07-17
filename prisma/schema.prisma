@@ -13,17 +13,22 @@ datasource db {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AUTH-OWNED TABLES (user / session / account / verification)
+// AUTH-OWNED TABLES (user / session / account / verification / organization /
+// member / invitation)
 //
 // These tables are owned by better-auth. Their column set, unique constraints,
 // and indexes MUST match what better-auth expects in
-// @better-auth/core/dist/db/get-tables.mjs (getAuthTables). Verified facts:
+// @better-auth/core/dist/db/get-tables.mjs (getAuthTables) — for the
+// organization plugin specifically, node_modules/better-auth/dist/plugins/
+// organization/schema.mjs (runtime field defs) and .d.mts (field metadata,
+// e.g. which are indexed/unique). Verified facts:
 //
 //   user.email          unique: true            -> @@unique([email])     (kept)
 //   session.token       unique: true            -> @@unique([token])     (kept)
 //   session.userId      index: true             -> @@index([userId])     (kept)
 //   account.userId      index: true             -> @@index([userId])     (kept)
 //   verification.id'fier index: true            -> @@index([identifier]) (kept)
+//   organization.slug   unique: true            -> @@unique([slug])      (kept)
 //
 // NOT added (would DIVERGE from better-auth's expected schema):
 //   - @@index([expiresAt]) on session / verification: better-auth defines NO
@@ -32,13 +37,29 @@ datasource db {
 //   - @@unique([providerId, accountId]) on account: better-auth marks neither
 //     field unique and declares no composite unique. The OAuth lookup is keyed
 //     by (providerId, accountId, userId) at the app layer, not enforced in DB.
+//   - @@unique([organizationId, userId]) on member: better-auth's
+//     MemberDefaultFields declares no composite unique either — "is this user
+//     already a member" is enforced at the app layer (adapter.findMemberByEmail
+//     in organization/routes/crud-members.mjs), not a DB constraint.
 //   These are "left to better-auth".
 //
 // Safe & additive: @default(now()) on updatedAt. better-auth always supplies
 // createdAt/updatedAt at the application layer (defaultValue/onUpdate in
 // getAuthTables), so a DB-level default never conflicts with better-auth — it
 // only protects raw/seed/backfill writes that bypass Prisma's @updatedAt from
-// violating NOT NULL.
+// violating NOT NULL. organization.updatedAt follows the same reasoning even
+// though the plugin's field metadata marks it optional — same divergence
+// already accepted for user/session/account above.
+//
+// organization.metadata is opaque to Prisma: the plugin stores an arbitrary
+// JSON object as a serialized string column and (de)serializes it at the
+// application layer (see the z.record(...).or(z.string().transform(JSON.parse))
+// shape in organization/schema.mjs) — hence `String?`, not a Json column.
+//
+// session.activeOrganizationId has no `references` in the plugin's
+// SessionDefaultFields (unlike organizationId elsewhere), so it's a plain
+// nullable column, not a Prisma relation — a stale/deleted org just leaves it
+// dangling until the app sets a new active org.
 // ─────────────────────────────────────────────────────────────────────────────
 
 model User {
@@ -52,6 +73,8 @@ model User {
   sessions      Session[]
   accounts      Account[]
   profile       Profile?
+  members       Member[]
+  invitations   Invitation[]
 
   @@unique([email])
   @@map("user")
@@ -85,15 +108,16 @@ model Profile {
 }
 
 model Session {
-  id        String   @id
-  expiresAt DateTime
-  token     String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
-  ipAddress String?
-  userAgent String?
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                   String   @id
+  expiresAt            DateTime
+  token                String
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @default(now()) @updatedAt
+  ipAddress            String?
+  userAgent            String?
+  userId               String
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activeOrganizationId String?
 
   @@unique([token])
   @@index([userId])
@@ -130,4 +154,49 @@ model Verification {
 
   @@index([identifier])
   @@map("verification")
+}
+
+model Organization {
+  id          String       @id
+  name        String
+  slug        String
+  logo        String?
+  metadata    String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @default(now()) @updatedAt
+  members     Member[]
+  invitations Invitation[]
+
+  @@unique([slug])
+  @@map("organization")
+}
+
+model Member {
+  id             String       @id
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           String       @default("member")
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId])
+  @@index([userId])
+  @@map("member")
+}
+
+model Invitation {
+  id             String       @id
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email          String
+  role           String
+  status         String       @default("pending")
+  expiresAt      DateTime
+  inviterId      String
+  inviter        User         @relation(fields: [inviterId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId])
+  @@map("invitation")
 }
