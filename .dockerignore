@@ -41,8 +41,3 @@ docker-compose.*.yml
 README.md
 AGENTS.md
 CLAUDE.md
-
-# Generated Prisma client is gitignored and absent; it is regenerated in-build.
-# Do NOT add src/generated/prisma here — if someone accidentally generates it
-# locally it should be ignored anyway; the build always reruns prisma generate.
-src/generated

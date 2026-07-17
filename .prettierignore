@@ -6,8 +6,8 @@ next-env.d.ts
 package-lock.json
 public
 
-# generated Prisma client
-src/generated
+# drizzle-kit generated migration metadata (snapshots/journal)
+drizzle/migrations/meta
 
 # Agent / instruction files — not ours to reformat
 .claude

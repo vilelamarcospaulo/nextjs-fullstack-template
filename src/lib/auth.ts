@@ -1,7 +1,10 @@
 import { betterAuth } from "better-auth";
-import { prismaAdapter } from "better-auth/adapters/prisma";
+import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { organization } from "better-auth/plugins";
-import { prisma } from "@/lib/prisma";
+import { asc, eq } from "drizzle-orm";
+import { db } from "@/lib/db";
+import * as schema from "@/lib/schema";
+import { member } from "@/lib/schema";
 import { env } from "@/lib/env";
 
 // Derive the trusted origin from the canonical app URL so better-auth's
@@ -57,19 +60,21 @@ export async function defaultActiveOrganization(session: {
 }): Promise<{ data: { activeOrganizationId: string } } | undefined> {
   if (session.activeOrganizationId) return undefined;
 
-  const member = await prisma.member.findFirst({
-    where: { userId: session.userId },
-    orderBy: { createdAt: "asc" },
-  });
-  if (!member) return undefined;
+  const [firstMembership] = await db
+    .select()
+    .from(member)
+    .where(eq(member.userId, session.userId))
+    .orderBy(asc(member.createdAt))
+    .limit(1);
+  if (!firstMembership) return undefined;
 
-  return { data: { activeOrganizationId: member.organizationId } };
+  return { data: { activeOrganizationId: firstMembership.organizationId } };
 }
 
-// Server-side Better Auth instance. Persistence runs through Prisma (typed
-// client, Postgres). Google is the only provider for now.
+// Server-side Better Auth instance. Persistence runs through Drizzle (node-postgres).
+// Google is the only provider for now.
 export const auth = betterAuth({
-  database: prismaAdapter(prisma, { provider: "postgresql" }),
+  database: drizzleAdapter(db, { provider: "pg", schema }),
   baseURL: env.BETTER_AUTH_URL,
   secret: env.BETTER_AUTH_SECRET,
 
@@ -120,7 +125,7 @@ export const auth = betterAuth({
           // `session.activeOrganizationId` isn't part of better-auth's base
           // Session type (it's added at runtime by the organization plugin —
           // see the field-def comment on Session.activeOrganizationId in
-          // prisma/schema.prisma), so the databaseHooks callback type only
+          // src/lib/schema.ts), so the databaseHooks callback type only
           // knows about it via the callback's `& Record<string, unknown>`
           // component, which types the value as `unknown`. Cast it to what it
           // actually is at runtime.

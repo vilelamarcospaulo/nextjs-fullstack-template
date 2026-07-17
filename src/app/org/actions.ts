@@ -1,8 +1,10 @@
 "use server";
 
 import { headers } from "next/headers";
+import { eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
+import { user } from "@/lib/schema";
 
 // Discriminated-union result type, matching the convention in src/app/actions.ts.
 export type AddMemberResult = { ok: true } | { ok: false; error: string };
@@ -52,7 +54,11 @@ export async function addMemberByEmail(
   }
 
   // ── 4. Business logic ────────────────────────────────────────────────────────
-  const targetUser = await prisma.user.findUnique({ where: { email } });
+  const [targetUser] = await db
+    .select({ id: user.id })
+    .from(user)
+    .where(eq(user.email, email))
+    .limit(1);
   if (!targetUser) {
     return { ok: false, error: "no_account_with_that_email" };
   }

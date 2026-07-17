@@ -2,7 +2,7 @@
 // business rules — callers layer their own (past-only, ranges, etc.) on top.
 //
 // Both functions operate on UTC components, not local ones. birthdate is
-// persisted via Prisma's `@db.Date` (Postgres native DATE), which is
+// persisted via Drizzle's `date()` column (Postgres native DATE), which is
 // timezone-less: node-postgres always reads it back as a Date at UTC
 // midnight, regardless of the server's local TZ. Building/reading with local
 // components here would round-trip correctly on the server that wrote the
@@ -31,8 +31,8 @@ export function strToDate(value: string): Date | null {
 }
 
 // Serialise a Date to its YYYY-MM-DD portion using UTC components — the
-// inverse of strToDate, and what matches a `@db.Date` value read back from
-// Postgres.
+// inverse of strToDate, and what matches a `date()` column value read back
+// from Postgres.
 export function dateToStr(d: Date): string {
   const yyyy = d.getUTCFullYear();
   const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
