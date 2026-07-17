@@ -3,7 +3,7 @@
 import { headers } from "next/headers";
 import { eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { getDb } from "@/lib/db";
 import { user } from "@/lib/schema";
 
 // Discriminated-union result type, matching the convention in src/app/actions.ts.
@@ -54,7 +54,7 @@ export async function addMemberByEmail(
   }
 
   // ── 4. Business logic ────────────────────────────────────────────────────────
-  const [targetUser] = await db
+  const [targetUser] = await getDb()
     .select({ id: user.id })
     .from(user)
     .where(eq(user.email, email))

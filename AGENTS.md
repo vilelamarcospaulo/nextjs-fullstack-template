@@ -29,14 +29,14 @@ Loosely clean-architecture, framework-agnostic core wrapped by a thin Next.js bo
 
 # Auth
 
-`src/lib/auth.ts` builds the server `betterAuth()` instance (`drizzleAdapter`, Google as sole social provider, explicit rate limiting). Mounted at `src/app/api/auth/[...all]/route.ts` via `toNextJsHandler(auth)`.
+`src/lib/auth.ts` builds the server `betterAuth()` instance (`drizzleAdapter`, Google as sole social provider). Mounted at `src/app/api/auth/[...all]/route.ts` via `toNextJsHandler(auth)`. Rate limiting is explicitly disabled (`rateLimit: { enabled: false }`) — better-auth's built-in "memory" storage is a per-process counter, which doesn't work across Cloudflare Workers' many concurrent, ephemeral isolates. Placeholder until a durable store (KV/D1) backs it.
 
 - In **Server Components / RSC render**: use `src/lib/session.ts`'s `getSession` (wrapped in React `cache()`, deduped per render pass).
 - In **Route Handlers**: don't use the cached `getSession` — call `auth.api.getSession({ headers: await headers() })` directly (see `src/app/api/profile/route.ts`), since Route Handlers fall outside the RSC render pass the cache is scoped to.
 
 # Database
 
-Drizzle ORM with `drizzle-orm/node-postgres` — uses the `pg` driver to connect to Postgres. `src/lib/db.ts` caches the Drizzle client on `globalThis` for HMR safety.
+Drizzle ORM with `drizzle-orm/node-postgres` — uses the `pg` driver to connect to Postgres. `src/lib/db.ts` exports `getDb()` (not a plain `db` singleton): in a deployed Cloudflare Worker it resolves the connection string from the `HYPERDRIVE` binding (`wrangler.app.jsonc`) via `getCloudflareContext()`; everywhere else (Docker/`next start`, Vitest, `drizzle-kit`) it falls back to a direct `DATABASE_URL` read. The resulting client is cached on `globalThis` either way. Always call `getDb()` from request-scoped code — never cache its result at module top level (see `src/lib/auth.ts`'s residual-risk comment on why that one exception exists).
 
 - Schema: `src/lib/schema.ts` (pgTable definitions for all models; relations use Drizzle's relations() helpers). Plain TypeScript, no code generation step needed.
 - Config: `drizzle.config.ts` (schema path, migrations `out` directory, dbCredentials).
@@ -49,28 +49,38 @@ The Next app is the job **producer**: `src/lib/queue.ts` pushes messages to Clou
 
 The **consumer** is a separate Cloudflare Worker, `src/worker/index.ts`, deployed independently via `wrangler deploy` (config in the root `wrangler.toml`) — it is no longer a Node process run alongside the app. `wrangler deploy --dry-run` bundles cleanly (esbuild tree-shakes the producer's `cloudflare` SDK import out, since the Worker only reaches `processHelloJob`, never `sendJob`).
 
-Every job is still wrapped in a `JobEnvelope<T> = { payload, traceId }`, now defined in `src/internal/domain/jobs.ts` and shared by both the producer (`src/lib/queue.ts`) and the consumer (`src/worker/index.ts`). `src/lib/trace.ts`'s `newTraceId()` starts a chain (`crypto.randomUUID()`); pass an existing `ctx.traceId` through `enqueueHelloJob(input, { traceId })` to continue a chain across job A → job B. The consumer binds the traceId into a pino child logger (`logger.child({ traceId, jobId, queue })`), so an HTTP request and every job it triggers are grepable by one traceId across processes. This concept is unchanged and no longer pg-boss-specific — follow it for any new job type, don't invent a separate correlation-id scheme. Retry/backoff/DLQ behavior is now configured natively in `wrangler.toml`'s `queues.consumers` block (`max_retries`, `dead_letter_queue`) instead of in application code.
+Every job is still wrapped in a `JobEnvelope<T> = { payload, traceId }`, now defined in `src/internal/domain/jobs.ts` and shared by both the producer (`src/lib/queue.ts`) and the consumer (`src/worker/index.ts`). `src/lib/trace.ts`'s `newTraceId()` starts a chain (`crypto.randomUUID()`); pass an existing `ctx.traceId` through `enqueueHelloJob(input, { traceId })` to continue a chain across job A → job B. The consumer binds the traceId into `src/worker/logger.ts`'s `createJobLogger({ traceId, jobId, queue })`, so an HTTP request and every job it triggers are grepable by one traceId across processes. Follow this for any new job type, don't invent a separate correlation-id scheme. Retry/backoff/DLQ behavior is configured natively in `wrangler.toml`'s `queues.consumers` block (`max_retries`, `dead_letter_queue`) instead of in application code.
 
 # Observability
 
-`src/instrumentation.ts` is the Next.js instrumentation hook; it dynamically imports `src/instrumentation.node.ts` only when `NEXT_RUNTIME==="nodejs"` **and** `OTEL_EXPORTER_OTLP_ENDPOINT` is set — telemetry is opt-in and must be initialized before pino/pg are first `require`d (OTel auto-instrumentation patches modules at require-time; importing late makes the patches silently no-op). `onRequestError` pipes RSC/route/action errors into pino.
+The app deploys to Cloudflare Workers (see "Deployment" below), which rules out the OpenTelemetry Node SDK (its auto-instrumentation patches modules at `require()` time — no equivalent exists in `workerd`) and pino's Node build (doesn't run under `workerd` at all — no Node stream internals, no worker-thread transports). Both were removed rather than ported.
 
-`src/lib/logger.ts` is plain pino → stdout JSON, no pretty-print transport (stdout is the log pipeline in a container). When telemetry is enabled, `@opentelemetry/instrumentation-pino` injects `trace_id`/`span_id` automatically.
+`src/lib/logger.ts` is a small, dependency-free logger: one JSON line per call via `console.log`/`console.warn`/`console.error`, mirroring the pattern `src/worker/logger.ts` already used for the queue consumer. Locally that's plain stdout; deployed, Cloudflare captures it as Workers Logs (`wrangler tail --config wrangler.app.jsonc`, or the dashboard). `src/instrumentation.ts` still exists only to host `onRequestError` (Next requires this exact file/path for that hook), which calls the logger unconditionally — no Node-vs-Edge branching needed anymore.
 
-`serverExternalPackages` in `next.config.ts` keeps the OTel SDK and pg/pino instrumentation packages out of the server bundle — required for the require-time patching above to work. Don't remove entries from that list without understanding why each is there (see the comment block in `next.config.ts`).
+There is currently no distributed tracing story (no OTel replacement) — a known gap, not yet addressed.
 
 # Testing
 
-`vitest.config.ts` defines three projects — use the matching npm script, not bare `vitest run`, when you only need one:
+`vitest.config.ts` defines five projects — use the matching npm script, not bare `vitest run`, when you only need one:
 
 - **unit** (`npm run test:unit`) — `src/utils/**`, `src/internal/**`, `src/lib/**` `*.test.ts`. No database.
-- **integration** (`npm run test:integration`) — `src/app/**/*.test.ts`, `src/worker/**/*.test.ts`. `test/global-setup.ts` recreates a throwaway `app_test` Postgres DB and applies migrations using Drizzle's programmatic migrator — needs a running Postgres.
+- **integration** (`npm run test:integration`) — `src/app/**/*.test.ts` (excluding `*.app-worker.test.ts`). `test/global-setup.ts` recreates a throwaway `app_test` Postgres DB and applies migrations using Drizzle's programmatic migrator — needs a running Postgres.
 - **ui** (`npm run test:ui`) — jsdom, `*.test.tsx`. `test/setup-ui.ts` polyfills `ResizeObserver`/`PointerEvent`/pointer-capture/`matchMedia` for base-ui components — don't hand-roll these polyfills per test file.
+- **worker** (`npm run test:worker`) — `src/worker/**/*.test.ts`, the queue consumer exercised inside the real Workers runtime via `@cloudflare/vitest-pool-workers` (`wrangler.toml`).
+- **app-worker** (`npm run test:app-worker`) — `src/app/**/*.app-worker.test.ts`, the OpenNext-built app Worker exercised the same way (`wrangler.app.jsonc`). Needs a fresh `npm run app:build` first — `.open-next/worker.js` is a build artifact, not source.
 
-**Mocking convention**: partial mocks that don't implement a hook's full return type (e.g. a router mock with only `push`/`refresh`) must be cast as `as unknown as ReturnType<typeof useRouter>`, not a direct cast — TypeScript's strict mode rejects a direct cast when the mock only partially overlaps the real type.
+**Mocking convention**: partial mocks that don't implement a hook's full return type (e.g. a router mock with only `push`/`refresh`) must be cast as `as unknown as ReturnType<typeof useRouter>`, not a direct cast — TypeScript's strict mode rejects a direct cast when the mock only partially overlaps the real type. Same rule for `getDb()`'s mock in `profile.test.ts`: cast as `as unknown as ReturnType<typeof getDb>`.
+
+# Deployment
+
+Two independent Cloudflare Workers, two independent `wrangler` configs — there is no Docker/VPS path:
+
+- **The app** itself: `wrangler.app.jsonc`, built/deployed via the OpenNext Cloudflare adapter (`npm run app:build` / `app:preview` / `app:deploy`). Postgres access goes through a Hyperdrive binding (`HYPERDRIVE`, see `src/lib/db.ts`), not a direct `DATABASE_URL` connection.
+- **The background-job consumer**: `wrangler.toml`, `npm run queue-worker:dev` / `queue-worker:deploy`.
+
+`deploy/local/docker-compose.yaml` is local-dev-only now (just Postgres). See `deploy/README.md` for the full production setup (Hyperdrive provisioning, queues, secrets).
 
 # Conventions
 
 - Commit messages follow Conventional Commits (`feat(scope): ...`, `fix(scope): ...`, `chore: ...`).
-- CI (`.github/workflows/ci.yaml`) runs `lint`, `format:check`, `typecheck`, `test`, `build` as a matrix against a real Postgres service container. Drizzle requires no code-generation step before these tasks (the schema is plain TypeScript).
-- Docker: `Dockerfile` has `runner` (app) and `migrator` (Drizzle migrations) targets; see `README.md` and `deploy/README.md` for local (docker-compose + Jaeger) and production (VPS + nginx/certbot) setups. The background-job queue consumer is no longer a Docker target — it deploys independently as a Cloudflare Worker via `wrangler deploy`.
+- CI (`.github/workflows/ci.yaml`) runs `lint`, `format:check`, `typecheck`, `test`, `build` as a matrix against a real Postgres service container, and builds the OpenNext app Worker artifact before the `test` task (needed by the `app-worker` Vitest project). Drizzle requires no code-generation step before these tasks (the schema is plain TypeScript).

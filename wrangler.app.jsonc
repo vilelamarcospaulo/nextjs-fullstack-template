@@ -1,0 +1,43 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "main": ".open-next/worker.js",
+  "name": "starter-kit-app",
+  "compatibility_date": "2026-07-17",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  // Postgres access via Hyperdrive (see src/lib/db.ts) — the decided approach
+  // for this migration, not D1 or a PostgreSQL proxy. localConnectionString
+  // below is the same non-secret local Postgres default used throughout this
+  // repo (.env.example, docker-compose) — not a real credential, safe to
+  // check in — so `wrangler dev`/`opennextjs-cloudflare preview`/the
+  // "app-worker" Vitest project all work with zero extra setup. Wrangler
+  // reads this at pool-startup time, before Miniflare boots, so it must come
+  // from here or a real (not .dev.vars-merged) process env var — override it
+  // per-environment via CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE
+  // (see .env.example) if your local Postgres uses a different URL.
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      // Placeholder — replace with the real Hyperdrive ID after running:
+      //   wrangler hyperdrive create <name> --connection-string=$DATABASE_URL
+      "id": "REPLACE_WITH_REAL_HYPERDRIVE_ID",
+      "localConnectionString": "postgresql://postgres:postgres@localhost:5432/app",
+    },
+  ],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS",
+  },
+  "services": [
+    {
+      // Self-reference service binding, the service name must match the worker name
+      // see https://opennext.js.org/cloudflare/caching
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "starter-kit-app",
+    },
+  ],
+  "images": {
+    // Enable image optimization
+    // see https://opennext.js.org/cloudflare/howtos/image
+    "binding": "IMAGES",
+  },
+}

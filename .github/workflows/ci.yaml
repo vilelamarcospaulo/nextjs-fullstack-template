@@ -12,11 +12,15 @@ concurrency:
 
 env:
   NEXT_TELEMETRY_DISABLED: "1"
-  # src/lib/env.ts validates these at import time and throws if any is empty, so
-  # `next build` and the integration route tests need all five present. CI never
-  # talks to real Google, and lint/format/build never talk to real Postgres, so
-  # dummy non-empty values are sufficient. The integration test project
-  # overrides DATABASE_URL via vitest.config.ts.
+  # src/lib/env.ts's getEnv() validates BETTER_AUTH_SECRET/BETTER_AUTH_URL/
+  # GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET on first call (request-scoped, not at
+  # import time) and throws if any is empty, so `next build` (which renders
+  # routes) and the integration route tests need all four present. DATABASE_URL
+  # isn't in that required set (see src/lib/db.ts's getDb()) but is still set
+  # here for the same reason. CI never talks to real Google, and lint/format/
+  # build never talk to real Postgres, so dummy non-empty values are
+  # sufficient. The integration test project overrides DATABASE_URL via
+  # vitest.config.ts.
   DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/app"
   BETTER_AUTH_SECRET: "ci-dummy-secret-not-used-for-anything-real"
   BETTER_AUTH_URL: "http://localhost:3000"
@@ -66,6 +70,13 @@ jobs:
       # Dockerfile's deps stage installs (Dockerfile, `deps` stage).
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
+
+      # Build the OpenNext app Worker artifact (.open-next/worker.js) so the
+      # app-worker Vitest project has something real to test. This runs
+      # regardless of matrix.task to ensure the artifact exists before `npm run
+      # test` executes. The build is idempotent and fast on subsequent runs.
+      - name: Build OpenNext app Worker
+        run: npm run app:build
 
       - name: Run ${{ matrix.task }}
         run: npm run ${{ matrix.task }}

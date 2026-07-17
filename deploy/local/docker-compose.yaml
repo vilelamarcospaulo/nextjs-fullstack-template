@@ -1,44 +1,14 @@
-# Local development telemetry stack: OpenTelemetry Collector + Jaeger.
+# Local development database.
 #
-# This compose stack provides only the telemetry backends (collector, tracing UI)
-# and is designed to run alongside the app executing on the host via `npm run dev`.
-# The app exports traces/logs to http://localhost:4318 when OTEL_EXPORTER_OTLP_ENDPOINT
-# is set; see deploy/README.md for setup instructions.
+# This compose stack used to also run an OpenTelemetry Collector + Jaeger for
+# local tracing, but the app no longer has an OTel/pino stack to feed them
+# (see git history: the app migrated to Cloudflare Workers, where pino/OTel
+# don't run — replaced by a plain console.log logger and Cloudflare's own
+# Workers Logs). Postgres is the only thing left here, still needed for local
+# dev regardless of runtime: `npm run dev`'s DATABASE_URL, and the app_test
+# database the integration test bootstrap creates/drops on the same server.
 
 services:
-  # OpenTelemetry Collector: receives OTLP traces/logs from the app
-  # and forwards them to Jaeger for visualization.
-  otel-collector:
-    # Pinned for reproducibility — the collector config schema can change across
-    # contrib releases. Bump deliberately, re-checking otel-collector-config.yaml.
-    image: otel/opentelemetry-collector-contrib:0.154.0
-    command: ["--config=/etc/otelcol-contrib/config.yaml"]
-    volumes:
-      - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
-    ports:
-      - "4317:4317" # OTLP gRPC receiver
-      - "4318:4318" # OTLP HTTP receiver
-    depends_on:
-      jaeger:
-        condition: service_started
-    networks:
-      - telemetry
-
-  # Jaeger: distributed tracing backend and UI (http://localhost:16686).
-  # Collector forwards OTLP traces here for visualization and analysis.
-  jaeger:
-    image: jaegertracing/all-in-one:1.76.0
-    environment:
-      COLLECTOR_OTLP_ENABLED: "true"
-    ports:
-      - "16686:16686" # Jaeger UI
-    networks:
-      - telemetry
-
-  # Postgres: local app database for `npm run dev` (and the app_test database
-  # used by the integration test bootstrap, created/dropped on the same
-  # server). Port 5432 is published so the app running on the host can reach
-  # it at postgresql://postgres:postgres@localhost:5432/app.
   postgres:
     image: postgres:16-alpine
     environment:
@@ -46,7 +16,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: app
     ports:
-      - "5432:5432"
+      - "5432:5432" # published so the app running on the host can reach it
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -54,17 +24,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    networks:
-      - db
 
 volumes:
   # Persists Postgres data across `docker compose down`/`up` cycles.
   pgdata:
-
-networks:
-  telemetry:
-    driver: bridge
-  # Separate network for the local database; it does not need to talk to the
-  # telemetry stack.
-  db:
-    driver: bridge

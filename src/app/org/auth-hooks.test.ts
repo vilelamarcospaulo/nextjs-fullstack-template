@@ -22,7 +22,7 @@ import {
   createPersonalOrgForUser,
   defaultActiveOrganization,
 } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { getDb } from "@/lib/db";
 import * as schema from "@/lib/schema";
 import {
   resetDb,
@@ -45,7 +45,7 @@ describe("createPersonalOrgForUser", () => {
 
     await createPersonalOrgForUser({ id: "user-a", name: "Alice" });
 
-    const orgs = await db
+    const orgs = await getDb()
       .select()
       .from(schema.organization)
       .where(eq(schema.organization.slug, "user-user-a"));
@@ -53,7 +53,7 @@ describe("createPersonalOrgForUser", () => {
     expect(org).not.toBeUndefined();
     expect(org!.name).toBe("Alice's workspace");
 
-    const members = await db
+    const members = await getDb()
       .select()
       .from(schema.member)
       .where(

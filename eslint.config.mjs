@@ -21,6 +21,8 @@ const eslintConfig = defineConfig([
     // state) — not source, and its bundle concatenates the whole app graph
     // into one file that isn't meaningfully lintable anyway.
     ".wrangler/**",
+    // OpenNext Cloudflare adapter build artifacts (bundled Worker and assets).
+    ".open-next/**",
   ]),
 ]);
 

@@ -1,37 +1,18 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Emit a self-contained server at .next/standalone (server.js + only the
-  // traced node_modules) so the Docker runtime stage can drop devDependencies
-  // and the build toolchain. See node_modules/next/dist/docs/.../config/output.md.
-  output: "standalone",
-
-  // Keep the OpenTelemetry SDK out of the server bundle. Two reasons:
-  //   1. Auto-instrumentation patches modules at require() time; bundling
-  //      collapses that indirection and the patches silently no-op.
-  //   2. A single shared @opentelemetry/api instance must back both the SDK
-  //      (instrumentation.node.ts) and request code (onRequestError), or the
-  //      global trace context won't line up.
-  // pg and pino are already in Next's default external list, so the
-  // pg/Pino instrumentations attach without listing them here.
-  //
   // "cloudflare" (src/lib/queue.ts's producer client, see that file) is a
   // large, Node-oriented, zero-runtime-dependency SDK covering the entire
   // Cloudflare API surface — no reason to make Next's bundler trace through
   // all of it for the one `queues.messages.push` call this app uses.
-  serverExternalPackages: [
-    "@opentelemetry/api",
-    "@opentelemetry/sdk-node",
-    "@opentelemetry/resources",
-    "@opentelemetry/sdk-logs",
-    "@opentelemetry/sdk-trace-node",
-    "@opentelemetry/exporter-trace-otlp-http",
-    "@opentelemetry/exporter-logs-otlp-http",
-    "@opentelemetry/semantic-conventions",
-    "@opentelemetry/instrumentation-pino",
-    "@opentelemetry/instrumentation-pg",
-    "cloudflare",
-  ],
+  //
+  // "pg" and "pg-cloudflare" are explicitly externalized for Cloudflare
+  // Workers deployment (OpenNext). Postgres access goes through a Hyperdrive
+  // binding (see wrangler.app.jsonc and src/lib/db.ts) — pg's own Workers
+  // TCP-socket shim (pg-cloudflare) talks to Hyperdrive under the hood.
+  serverExternalPackages: ["cloudflare", "pg", "pg-cloudflare"],
 };
 
 export default nextConfig;
+
+import("@opennextjs/cloudflare").then((m) => m.initOpenNextCloudflareForDev());

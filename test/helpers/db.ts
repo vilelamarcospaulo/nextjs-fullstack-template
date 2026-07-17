@@ -3,7 +3,7 @@
 // to the throwaway Postgres database provisioned in test/global-setup.ts.
 import { createId } from "@paralleldrive/cuid2";
 import { eq, count } from "drizzle-orm";
-import { db } from "@/lib/db";
+import { getDb } from "@/lib/db";
 import * as schema from "@/lib/schema";
 
 // Wipe every table between tests. Children (which carry FKs to user) go before
@@ -14,6 +14,7 @@ import * as schema from "@/lib/schema";
 // organization itself has no FK to user, so its position relative to user is
 // otherwise unconstrained.
 export async function resetDb() {
+  const db = getDb();
   await db.delete(schema.member);
   await db.delete(schema.invitation);
   await db.delete(schema.organization);
@@ -34,7 +35,7 @@ type SeedUser = {
 // Insert a user row. emailVerified is set so the row mirrors a real signed-in
 // account; the integration tests mock the session rather than Better Auth.
 export function seedUser(user: SeedUser) {
-  return db
+  return getDb()
     .insert(schema.user)
     .values({
       id: user.id,
@@ -55,7 +56,7 @@ type SeedProfile = {
 
 // Insert a profile row for an existing user.
 export function seedProfile(profile: SeedProfile) {
-  return db
+  return getDb()
     .insert(schema.profile)
     .values({
       id: createId(),
@@ -77,7 +78,7 @@ type SeedOrganization = {
 
 // Insert an organization row.
 export function seedOrganization(organization: SeedOrganization) {
-  return db
+  return getDb()
     .insert(schema.organization)
     .values({
       id: organization.id,
@@ -101,7 +102,7 @@ type SeedMember = {
 
 // Insert a member row linking an existing user to an existing organization.
 export function seedMember(member: SeedMember) {
-  return db
+  return getDb()
     .insert(schema.member)
     .values({
       id: member.id,
@@ -116,7 +117,7 @@ export function seedMember(member: SeedMember) {
 // Query helpers for assertions in tests.
 
 export async function getProfile(userId: string) {
-  const results = await db
+  const results = await getDb()
     .select()
     .from(schema.profile)
     .where(eq(schema.profile.userId, userId));
@@ -124,7 +125,7 @@ export async function getProfile(userId: string) {
 }
 
 export async function getUser(userId: string) {
-  const results = await db
+  const results = await getDb()
     .select()
     .from(schema.user)
     .where(eq(schema.user.id, userId));
@@ -132,7 +133,7 @@ export async function getUser(userId: string) {
 }
 
 export async function countProfiles(userId: string) {
-  const results = await db
+  const results = await getDb()
     .select({ count: count() })
     .from(schema.profile)
     .where(eq(schema.profile.userId, userId));
