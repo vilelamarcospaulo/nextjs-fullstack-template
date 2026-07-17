@@ -51,6 +51,16 @@ export default defineConfig({
         test: {
           name: "integration",
           include: ["src/app/**/*.test.ts", "src/worker/**/*.test.ts"],
+          // Every test file's beforeEach calls resetDb(), a full-table wipe
+          // against the ONE shared `app_test` database (see
+          // test/global-setup.ts) — there's no per-file DB isolation. Running
+          // test files in parallel (Vitest's default) lets one file's
+          // resetDb()/seed race another file's in-flight assertions, causing
+          // intermittent FK-violation / unique-constraint / record-not-found
+          // failures that move around between runs. Force this project's test
+          // files to run one at a time; unit/ui don't touch a DB and stay
+          // parallel.
+          fileParallelism: false,
           // Provisions a fresh migrated Postgres DB for the route handlers.
           globalSetup: ["./test/global-setup.ts"],
           // Workers construct the Prisma client (@/lib/prisma) against the temp
