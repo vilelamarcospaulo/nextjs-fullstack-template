@@ -1,11 +1,6 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Emit a self-contained server at .next/standalone (server.js + only the
-  // traced node_modules) so the Docker runtime stage can drop devDependencies
-  // and the build toolchain. See node_modules/next/dist/docs/.../config/output.md.
-  output: "standalone",
-
   // "cloudflare" (src/lib/queue.ts's producer client, see that file) is a
   // large, Node-oriented, zero-runtime-dependency SDK covering the entire
   // Cloudflare API surface — no reason to make Next's bundler trace through

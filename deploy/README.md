@@ -1,53 +1,55 @@
 # Deployment Guide
 
-This directory contains two independent deployment configurations:
-
-- **`local/`** — local development telemetry stack (collector + Jaeger)
-- **`production/`** — full VPS deployment (nginx + TLS + app + telemetry)
+This app deploys entirely to Cloudflare: the Next.js app itself as a Cloudflare Worker (via the OpenNext Cloudflare adapter), and the background-job consumer as a second, independent Worker. There is no Docker/VPS deployment path anymore — the `deploy/local/` compose stack here is only for local development.
 
 ## Local Development
 
-The local telemetry stack provides OpenTelemetry Collector and Jaeger UI for tracing your app running on the host machine via `npm run dev`.
+`deploy/local/docker-compose.yaml` runs a local Postgres instance — the only thing the app needs from Docker locally.
 
 ### Setup
 
-1. Start the local collector + Jaeger:
+1. Start Postgres:
 
 ```bash
 docker compose -f deploy/local/docker-compose.yaml up -d
 ```
 
-2. Configure your app to export traces. In `.env.local` (or export inline), set:
+2. Configure environment variables (see `.env.example` for the full template):
 
 ```bash
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
-OTEL_SERVICE_NAME=starter-kit
+cp .env.example .env
+cp .env.example .env.local
 ```
 
-See `.env.example` for a commented template.
+3. Run migrations and seed data:
 
-3. Run the app on the host:
+```bash
+npx drizzle-kit migrate
+npm run db:seed
+```
+
+4. Run the app:
 
 ```bash
 npm run dev
 ```
 
-4. (Optional) In a second terminal, run the queue consumer:
+5. (Optional) Run the queue consumer locally, no real Cloudflare account needed:
 
 ```bash
 cp .dev.vars.example .dev.vars   # first time only
-npm run worker:dev
+npm run queue-worker:dev
 ```
 
-This runs `wrangler dev`, which simulates the `hello`/`hello-dlq` Cloudflare Queues locally via Miniflare — no local Postgres is involved for the queue anymore (Postgres is still used for the app's own DB via `npm run dev`'s `DATABASE_URL`, just not for jobs). No real Cloudflare account is needed for local dev: with `.dev.vars` in place (gitignored, never read by `wrangler deploy`), the Worker exposes a local-only HTTP endpoint standing in for Cloudflare's real push API. Set `QUEUE_LOCAL_PUSH_URL=http://localhost:8787` in `.env.local` (see `.env.example`) so the app's producer (`src/lib/queue.ts`) targets it instead of the real Cloudflare API. A real account IS required for production (see below), or if you'd rather exercise the real API path locally too — see `.env.example`'s Option B.
+This runs `wrangler dev`, which simulates the `hello`/`hello-dlq` Cloudflare Queues locally via Miniflare. Set `QUEUE_LOCAL_PUSH_URL=http://localhost:8787` in `.env.local` (see `.env.example`) so the app's producer (`src/lib/queue.ts`) targets it instead of the real Cloudflare API.
 
-5. View traces in Jaeger UI:
+6. (Optional) Preview the app itself running as a Worker, instead of via `next dev`:
 
+```bash
+npm run app:preview
 ```
-http://localhost:16686
-```
 
-Select service **`starter-kit`** to see your traces.
+This builds via OpenNext and runs the real Worker locally under Miniflare (`wrangler dev` under the hood) — closer to production than `next dev`, useful for catching Workers-runtime-specific issues before deploying.
 
 ### Teardown
 
@@ -55,68 +57,47 @@ Select service **`starter-kit`** to see your traces.
 docker compose -f deploy/local/docker-compose.yaml down
 ```
 
-## Production
+## Production: Cloudflare Workers
 
-The production stack is a self-contained VPS deployment that includes:
+Two independent Workers, two independent `wrangler` configs:
 
-- **nginx** with Let's Encrypt TLS (via certbot)
-- **app** (Next.js) — also the background-job _producer_, pushing to Cloudflare Queues over HTTP
-- **OpenTelemetry Collector** + **Jaeger** (internal-only)
+- **The app** — `wrangler.app.jsonc`, deployed via `npm run app:deploy` (OpenNext Cloudflare adapter).
+- **The queue consumer** — `wrangler.toml`, deployed via `npm run queue-worker:deploy`.
 
-The background-job queue _consumer_ is **not** part of this Docker stack. It deploys independently as a Cloudflare Worker via `wrangler deploy`.
+### One-time setup
 
-For full production setup, see `deploy/production/.env.example` and `deploy/production/init-letsencrypt.sh`.
-
-### Quick reference
-
-1. Copy and fill `deploy/production/.env.example` → `deploy/production/.env`
-   - Set `DOMAIN`, `LETSENCRYPT_EMAIL`
-   - Set `BETTER_AUTH_SECRET`, Google OAuth creds
-   - Set `BETTER_AUTH_URL=https://<DOMAIN>`
-   - Set `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_HELLO_QUEUE_ID` — required by the `app` container to push jobs to Cloudflare Queues.
-
-2. Point DNS A-record to the VPS IP.
-
-3. One-time Cloudflare Queues setup, against your real Cloudflare account:
+1. Provision a Hyperdrive connection to your production Postgres instance:
 
 ```bash
-wrangler queues create hello
-wrangler queues create hello-dlq
+npx wrangler login
+npx wrangler hyperdrive create <name> --connection-string="$DATABASE_URL"
 ```
 
-4. Deploy the queue consumer Worker. This is a separate deploy step from the Docker stack below — the Worker is not a Docker service:
+Copy the resulting ID into `wrangler.app.jsonc`'s `hyperdrive[0].id` (currently a placeholder — `REPLACE_WITH_REAL_HYPERDRIVE_ID`).
+
+2. Create the Cloudflare Queues used by the background-job demo:
 
 ```bash
-wrangler deploy
+npx wrangler queues create hello
+npx wrangler queues create hello-dlq
 ```
 
-5. Run Let's Encrypt setup (use `--staging` first to avoid rate limits):
+3. Set the app's production vars/secrets — either in `wrangler.app.jsonc`'s `vars` block for non-secret values, or via `wrangler secret put <NAME> --config wrangler.app.jsonc` for `BETTER_AUTH_SECRET`/Google OAuth credentials. At minimum: `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` (your production URL), `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`. See `.env.example` for what each one does.
+
+4. Apply database migrations against production Postgres from your own machine or CI (there's no in-Worker migration step — Drizzle's CLI is a plain Node process):
 
 ```bash
-cd deploy/production && ./init-letsencrypt.sh
+DATABASE_URL="<production-connection-string>" npx drizzle-kit migrate
 ```
 
-6. Start the stack:
+### Deploy
 
 ```bash
-docker compose -f deploy/production/docker-compose.yaml up -d --build
+npm run queue-worker:deploy   # background-job consumer
+npm run app:deploy            # the app itself
 ```
-
-7. Access the app at `https://<DOMAIN>`.
-
-8. Access Jaeger UI internally via SSH tunnel:
-
-```bash
-ssh -L 16686:localhost:16686 user@<VPS_IP>
-```
-
-Then visit `http://localhost:16686`.
 
 ### Notes
 
-- The root `Dockerfile` (shared by both stacks) uses a BuildKit secret for private registry access (`~/.npmrc` mounted as `npmrc`). The CodeArtifact token expires ~12h, so refresh before building if `npm ci` returns E401.
-- The production compose includes its own app build, database migrations, and env file management.
-
----
-
-For app-specific telemetry configuration, see `src/instrumentation.ts`.
+- Rate limiting is currently disabled in `src/lib/auth.ts` (`rateLimit: { enabled: false }`) — better-auth's built-in "memory" storage doesn't work across Cloudflare's concurrent, ephemeral isolates. Put a durable store (Workers KV or D1) behind it before relying on rate limiting in production.
+- Logging goes to Cloudflare's built-in Workers Logs (`console.log`/`console.error`, see `src/lib/logger.ts`) — view it with `wrangler tail --config wrangler.app.jsonc` or in the Cloudflare dashboard. There's no separate tracing/telemetry stack to run.
