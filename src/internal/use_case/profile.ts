@@ -1,7 +1,11 @@
 // Profile use cases: orchestration between the HTTP/UI boundary (app/) and the
-// data store (Prisma). No framework imports — the boundary resolves the session
-// and passes a userId in; these functions never touch headers or Response.
-import { prisma } from "@/lib/prisma";
+// data store (Drizzle). No framework imports — the boundary resolves the
+// session and passes a userId in; these functions never touch headers or
+// Response.
+import { eq } from "drizzle-orm";
+import { createId } from "@paralleldrive/cuid2";
+import { db } from "@/lib/db";
+import { user, profile } from "@/lib/schema";
 import { inputToProfile, type Field } from "@/internal/domain/profile";
 import { dateToStr } from "@/utils/date";
 
@@ -19,14 +23,6 @@ export type ProfileView = {
 export type UpdateProfileResult =
   | { ok: true; value: ProfileView }
   | { ok: false; errors: Partial<Record<Field, string>> };
-
-// Selects the user row plus its optional 1-1 profile in one query.
-const userWithProfile = {
-  name: true,
-  email: true,
-  image: true,
-  profile: { select: { birthdate: true, bio: true, location: true } },
-} as const;
 
 // Flatten a user (+ optional profile) into the serialised view. birthdate is
 // stored as a Date but emitted as YYYY-MM-DD (a presentation concern, hence the
@@ -55,11 +51,33 @@ function toView(user: {
 
 // Read a user's own profile. Returns null when the user row is missing.
 export async function getProfile(userId: string): Promise<ProfileView | null> {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: userWithProfile,
+  const rows = await db
+    .select({
+      name: user.name,
+      email: user.email,
+      image: user.image,
+      birthdate: profile.birthdate,
+      bio: profile.bio,
+      location: profile.location,
+    })
+    .from(user)
+    .leftJoin(profile, eq(profile.userId, user.id))
+    .where(eq(user.id, userId))
+    .limit(1);
+
+  const row = rows[0];
+  if (!row) return null;
+
+  // The leftJoin returns birthdate/bio/location as null when there's no
+  // profile row at all — indistinguishable here from a profile row whose
+  // fields happen to all be null, but toView() flattens both cases to the
+  // same ProfileView output via `?.`/`??`, so no branching is needed.
+  return toView({
+    name: row.name,
+    email: row.email,
+    image: row.image,
+    profile: { birthdate: row.birthdate, bio: row.bio, location: row.location },
   });
-  return user ? toView(user) : null;
 }
 
 // Validate raw input (never trust the caller) and persist it. user.{name,image}
@@ -73,19 +91,28 @@ export async function updateProfile(
 
   const { name, image, birthdate, bio, location } = result.value;
 
-  const [user, profile] = await prisma.$transaction([
-    prisma.user.update({
-      where: { id: userId },
-      data: { name, image },
-      select: { name: true, email: true, image: true },
-    }),
-    prisma.profile.upsert({
-      where: { userId },
-      create: { userId, birthdate, bio, location },
-      update: { birthdate, bio, location },
-      select: { birthdate: true, bio: true, location: true },
-    }),
-  ]);
+  const value = await db.transaction(async (tx) => {
+    const [updatedUser] = await tx
+      .update(user)
+      .set({ name, image })
+      .where(eq(user.id, userId))
+      .returning({ name: user.name, email: user.email, image: user.image });
 
-  return { ok: true, value: toView({ ...user, profile }) };
+    const [updatedProfile] = await tx
+      .insert(profile)
+      .values({ id: createId(), userId, birthdate, bio, location })
+      .onConflictDoUpdate({
+        target: profile.userId,
+        set: { birthdate, bio, location },
+      })
+      .returning({
+        birthdate: profile.birthdate,
+        bio: profile.bio,
+        location: profile.location,
+      });
+
+    return toView({ ...updatedUser, profile: updatedProfile });
+  });
+
+  return { ok: true, value };
 }

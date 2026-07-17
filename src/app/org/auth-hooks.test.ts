@@ -6,7 +6,7 @@
 // password flow), so there's no way to drive a real signup locally to
 // exercise `user.create.after` / `session.create.before` end to end. The
 // pragmatic alternative is to call the extracted functions directly against
-// the real test Postgres DB and assert their Prisma side effects. Placed
+// the real test Postgres DB and assert their Drizzle side effects. Placed
 // under src/app/org/ (rather than colocated as src/lib/auth.test.ts) so this
 // file is picked up by Vitest's "integration" project, which is the one that
 // provisions the real migrated Postgres DB (see vitest.config.ts) — the
@@ -17,11 +17,13 @@
 // boundary: the entire point of that function is the Member/role wiring
 // better-auth's real endpoint produces, which a mock would tell us nothing
 // about, so we call the real thing and assert the resulting rows.
+import { eq, and } from "drizzle-orm";
 import {
   createPersonalOrgForUser,
   defaultActiveOrganization,
 } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/db";
+import * as schema from "@/lib/schema";
 import {
   resetDb,
   seedUser,
@@ -43,16 +45,25 @@ describe("createPersonalOrgForUser", () => {
 
     await createPersonalOrgForUser({ id: "user-a", name: "Alice" });
 
-    const org = await prisma.organization.findUnique({
-      where: { slug: "user-user-a" },
-    });
-    expect(org).not.toBeNull();
+    const orgs = await db
+      .select()
+      .from(schema.organization)
+      .where(eq(schema.organization.slug, "user-user-a"));
+    const org = orgs[0];
+    expect(org).not.toBeUndefined();
     expect(org!.name).toBe("Alice's workspace");
 
-    const member = await prisma.member.findFirst({
-      where: { organizationId: org!.id, userId: "user-a" },
-    });
-    expect(member).not.toBeNull();
+    const members = await db
+      .select()
+      .from(schema.member)
+      .where(
+        and(
+          eq(schema.member.organizationId, org!.id),
+          eq(schema.member.userId, "user-a"),
+        ),
+      );
+    const member = members[0];
+    expect(member).not.toBeUndefined();
     // better-auth's default creatorRole for auth.api.createOrganization.
     expect(member!.role).toBe("owner");
   });

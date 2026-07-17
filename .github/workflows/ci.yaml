@@ -54,7 +54,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          # Node >= 23.6 so Prisma's `node prisma/seed.ts` (native TS stripping)
+          # Node >= 23.6 so native TS stripping for `node drizzle/seed.ts`
           # works; using the current major to stay close to local dev.
           node-version: "24"
           # Caches ~/.npm keyed on package-lock.json's hash — standard
@@ -66,11 +66,6 @@ jobs:
       # Dockerfile's deps stage installs (Dockerfile, `deps` stage).
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
-
-      # The Prisma client (src/generated/prisma) is gitignored; every task below
-      # imports from it, so generate it before running anything.
-      - name: Generate Prisma client
-        run: npx prisma generate
 
       - name: Run ${{ matrix.task }}
         run: npm run ${{ matrix.task }}

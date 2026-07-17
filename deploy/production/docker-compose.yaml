@@ -14,8 +14,8 @@
 
 services:
   # ---------------------------------------------------------------------------
-  # migrate — one-shot Prisma migration runner.
-  # Runs `prisma migrate deploy` against Postgres and exits.
+  # migrate — one-shot Drizzle migration runner.
+  # Runs `drizzle-kit migrate` against Postgres and exits.
   # The app service waits for this to complete successfully before starting.
   # ---------------------------------------------------------------------------
   migrate:

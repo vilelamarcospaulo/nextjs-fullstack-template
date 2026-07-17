@@ -3,7 +3,7 @@ import { defineConfig } from "vitest/config";
 // Two test projects so unit and integration runs can be selected independently
 // (npm run test:unit / test:integration) while `vitest run` executes both.
 //
-// - unit: framework-free logic (pure utils, the domain validator, Prisma-mocked
+// - unit: framework-free logic (pure utils, the domain validator, Drizzle-mocked
 //   use cases). No database, no global setup.
 // - integration: the real HTTP route handlers exercised end to end against a
 //   throwaway migrated Postgres DB. Only this project pays the DB setup cost.
@@ -63,7 +63,7 @@ export default defineConfig({
           fileParallelism: false,
           // Provisions a fresh migrated Postgres DB for the route handlers.
           globalSetup: ["./test/global-setup.ts"],
-          // Workers construct the Prisma client (@/lib/prisma) against the temp
+          // Workers construct the Drizzle client (@/lib/db) against the temp
           // DB. Must match the URL migrated in test/global-setup.ts.
           env: {
             DATABASE_URL:

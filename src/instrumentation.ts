@@ -3,9 +3,9 @@
 // Next calls the exported `register()` exactly once per runtime instance and
 // AWAITS it before the server accepts any request. This is the only supported
 // hook for process-wide startup, and the only point early enough to install
-// OpenTelemetry's require-time patches before app code loads @prisma/client and
-// pino. Starting the SDK anywhere else races those imports and silently yields
-// no spans.
+// OpenTelemetry's require-time patches before app code loads pg (Drizzle's
+// driver) and pino. Starting the SDK anywhere else races those imports and
+// silently yields no spans.
 //
 // The Node SDK is isolated in ./instrumentation.node and imported dynamically,
 // guarded on NEXT_RUNTIME, so the Edge runtime (e.g. a future middleware.ts)

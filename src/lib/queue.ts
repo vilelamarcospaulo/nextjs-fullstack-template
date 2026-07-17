@@ -1,6 +1,6 @@
 // pg-boss client singleton.
 //
-// Mirrors the caching pattern in src/lib/prisma.ts (globalThis-cached
+// Mirrors the caching pattern in src/lib/db.ts (globalThis-cached
 // instance, dev-HMR-safe), but async: pg-boss needs `.start()` (which runs
 // its internal migrations) before it can be used, so this module exposes
 // `getQueue(): Promise<PgBoss>` instead of a plain exported value.
@@ -8,7 +8,7 @@
 // Deliberately does NOT import src/lib/env.ts — that module hard-requires
 // Better Auth / Google OAuth vars that a standalone worker container will
 // never have set. DATABASE_URL is read directly from process.env instead,
-// matching the style already used in prisma/seed.ts.
+// matching the style already used in drizzle/seed.ts.
 //
 // This file is imported both by Next.js app code (via the "@/lib/queue"
 // alias, which the Next bundler resolves) and by the worker process (via a
@@ -30,7 +30,7 @@ const RETRY_DELAY_SECONDS = 1;
 const RETRY_DELAY_MAX_SECONDS = 60;
 
 // Caches on globalThis (not a plain module-level variable) for the same
-// reason src/lib/prisma.ts does: in dev, Next.js HMR re-evaluates modules on
+// reason src/lib/db.ts does: in dev, Next.js HMR re-evaluates modules on
 // every reload, which would otherwise spawn a new PgBoss instance (and a new
 // DB connection/maintenance loop) per reload. Also caches the in-flight
 // start/init PROMISE (not just the resolved instance) so concurrent

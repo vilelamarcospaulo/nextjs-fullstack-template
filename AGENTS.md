@@ -19,9 +19,9 @@ If you hit an API that behaves unexpectedly, assume a 16 change before assuming 
 Loosely clean-architecture, framework-agnostic core wrapped by a thin Next.js boundary:
 
 - `src/internal/domain/` — pure types + validators, no framework/IO imports (e.g. `domain/profile.ts`'s `inputToProfile()` returns `{ok:true,value}|{ok:false,errors}`; also used client-side, so validation logic has one source of truth).
-- `src/internal/use_case/` — orchestrates domain + infra (Prisma, queue); still no Next.js imports.
+- `src/internal/use_case/` — orchestrates domain + infra (Drizzle, queue); still no Next.js imports.
 - `src/app/` — App Router boundary only: route handlers and pages parse the request/session and delegate to use cases. Keep business logic out of `src/app`.
-- `src/lib/` — infra singletons: `prisma.ts`, `queue.ts`, `auth.ts`/`auth-client.ts`/`session.ts`, `logger.ts`, `trace.ts`, `env.ts`.
+- `src/lib/` — infra singletons: `db.ts`, `queue.ts`, `auth.ts`/`auth-client.ts`/`session.ts`, `logger.ts`, `trace.ts`, `env.ts`.
 - `src/utils/` — small pure helpers with no dependencies on the layers above.
 - `src/components/` — UI (shadcn/ui-based `components/ui`, plus `navbar.tsx`, `theme-toggle.tsx`, `providers.tsx`).
 
@@ -29,40 +29,40 @@ Loosely clean-architecture, framework-agnostic core wrapped by a thin Next.js bo
 
 # Auth
 
-`src/lib/auth.ts` builds the server `betterAuth()` instance (`prismaAdapter`, Google as sole social provider, explicit rate limiting). Mounted at `src/app/api/auth/[...all]/route.ts` via `toNextJsHandler(auth)`.
+`src/lib/auth.ts` builds the server `betterAuth()` instance (`drizzleAdapter`, Google as sole social provider, explicit rate limiting). Mounted at `src/app/api/auth/[...all]/route.ts` via `toNextJsHandler(auth)`.
 
 - In **Server Components / RSC render**: use `src/lib/session.ts`'s `getSession` (wrapped in React `cache()`, deduped per render pass).
 - In **Route Handlers**: don't use the cached `getSession` — call `auth.api.getSession({ headers: await headers() })` directly (see `src/app/api/profile/route.ts`), since Route Handlers fall outside the RSC render pass the cache is scoped to.
 
 # Database
 
-Prisma 7 with `@prisma/adapter-pg` (`PrismaPg`) — Prisma 7 requires a driver adapter rather than reading the datasource URL straight from the schema. `src/lib/prisma.ts` caches the client on `globalThis` for HMR safety.
+Drizzle ORM with `drizzle-orm/node-postgres` — uses the `pg` driver to connect to Postgres. `src/lib/db.ts` caches the Drizzle client on `globalThis` for HMR safety.
 
-- Schema: `prisma/schema.prisma`. Generated client → `src/generated/prisma`, gitignored (Prisma 7 emits a full JS/TS client, treat it as a build artifact — regenerate with `npx prisma generate`, required before typecheck/build/test since everything imports from it).
-- Config: `prisma.config.ts` (schema/migration paths, seed hook).
-- Seed: `prisma/seed.ts`, run via `node prisma/seed.ts` (Node's native TS stripping — no `ts-node`), idempotent upsert of a fixed-id demo user/profile.
-- Migrations: `prisma/migrations/`.
+- Schema: `src/lib/schema.ts` (pgTable definitions for all models; relations use Drizzle's relations() helpers). Plain TypeScript, no code generation step needed.
+- Config: `drizzle.config.ts` (schema path, migrations `out` directory, dbCredentials).
+- Seed: `drizzle/seed.ts`, run via `npm run db:seed` (Node's native TS stripping — no `ts-node`), idempotent upsert of a fixed-id demo user/profile. NOT automatically hooked into migrations, must be run manually after `drizzle-kit migrate`.
+- Migrations: `drizzle/migrations/` (SQL files generated via `npx drizzle-kit generate` after schema changes, applied via `npx drizzle-kit migrate`).
 
 # Background jobs
 
-`src/worker/index.ts` is a separate long-running process from the Next app (`npm run worker`, or `npm run worker:dev` for `--watch`), sharing `src/lib/queue.ts` (pg-boss, singleton cached on `globalThis`, same pattern as Prisma). Queues are declared idempotently in `initQueue()`.
+`src/worker/index.ts` is a separate long-running process from the Next app (`npm run worker`, or `npm run worker:dev` for `--watch`), sharing `src/lib/queue.ts` (pg-boss, singleton cached on `globalThis`, same pattern as the Drizzle client). Queues are declared idempotently in `initQueue()`.
 
 Every job is wrapped in a `JobEnvelope<T> = { payload, traceId }` (`sendJob`/`workJob` in `src/lib/queue.ts`). `src/lib/trace.ts`'s `newTraceId()` starts a chain (`crypto.randomUUID()`); pass an existing `ctx.traceId` through `enqueueHelloJob(input, { traceId })` to continue a chain across job A → job B. `workJob` binds the traceId into a pino child logger (`logger.child({ traceId, jobId, queue })`), so an HTTP request and every job it triggers are grepable by one traceId across processes. Follow this pattern for any new job type — don't invent a separate correlation-id scheme.
 
 # Observability
 
-`src/instrumentation.ts` is the Next.js instrumentation hook; it dynamically imports `src/instrumentation.node.ts` only when `NEXT_RUNTIME==="nodejs"` **and** `OTEL_EXPORTER_OTLP_ENDPOINT` is set — telemetry is opt-in and must be initialized before pino/Prisma are first `require`d (OTel auto-instrumentation patches modules at require-time; importing late makes the patches silently no-op). `onRequestError` pipes RSC/route/action errors into pino.
+`src/instrumentation.ts` is the Next.js instrumentation hook; it dynamically imports `src/instrumentation.node.ts` only when `NEXT_RUNTIME==="nodejs"` **and** `OTEL_EXPORTER_OTLP_ENDPOINT` is set — telemetry is opt-in and must be initialized before pino/pg are first `require`d (OTel auto-instrumentation patches modules at require-time; importing late makes the patches silently no-op). `onRequestError` pipes RSC/route/action errors into pino.
 
 `src/lib/logger.ts` is plain pino → stdout JSON, no pretty-print transport (stdout is the log pipeline in a container). When telemetry is enabled, `@opentelemetry/instrumentation-pino` injects `trace_id`/`span_id` automatically.
 
-`serverExternalPackages` in `next.config.ts` keeps the OTel SDK and Prisma/pino instrumentation packages out of the server bundle — required for the require-time patching above to work. Don't remove entries from that list without understanding why each is there (see the comment block in `next.config.ts`).
+`serverExternalPackages` in `next.config.ts` keeps the OTel SDK and pg/pino instrumentation packages out of the server bundle — required for the require-time patching above to work. Don't remove entries from that list without understanding why each is there (see the comment block in `next.config.ts`).
 
 # Testing
 
 `vitest.config.ts` defines three projects — use the matching npm script, not bare `vitest run`, when you only need one:
 
 - **unit** (`npm run test:unit`) — `src/utils/**`, `src/internal/**`, `src/lib/**` `*.test.ts`. No database.
-- **integration** (`npm run test:integration`) — `src/app/**/*.test.ts`, `src/worker/**/*.test.ts`. `test/global-setup.ts` recreates a throwaway `app_test` Postgres DB and runs `prisma migrate deploy` — needs a running Postgres.
+- **integration** (`npm run test:integration`) — `src/app/**/*.test.ts`, `src/worker/**/*.test.ts`. `test/global-setup.ts` recreates a throwaway `app_test` Postgres DB and applies migrations using Drizzle's programmatic migrator — needs a running Postgres.
 - **ui** (`npm run test:ui`) — jsdom, `*.test.tsx`. `test/setup-ui.ts` polyfills `ResizeObserver`/`PointerEvent`/pointer-capture/`matchMedia` for base-ui components — don't hand-roll these polyfills per test file.
 
 **Mocking convention**: partial mocks that don't implement a hook's full return type (e.g. a router mock with only `push`/`refresh`) must be cast as `as unknown as ReturnType<typeof useRouter>`, not a direct cast — TypeScript's strict mode rejects a direct cast when the mock only partially overlaps the real type.
@@ -70,5 +70,5 @@ Every job is wrapped in a `JobEnvelope<T> = { payload, traceId }` (`sendJob`/`wo
 # Conventions
 
 - Commit messages follow Conventional Commits (`feat(scope): ...`, `fix(scope): ...`, `chore: ...`).
-- CI (`.github/workflows/ci.yaml`) runs `lint`, `format:check`, `typecheck`, `test`, `build` as a matrix against a real Postgres service container; `prisma generate` runs before every task since generated types are gitignored.
-- Docker: `Dockerfile` has `runner` (app) and `migrator` (migrations) targets; see `README.md` and `deploy/README.md` for local (docker-compose + Jaeger) and production (VPS + nginx/certbot) setups.
+- CI (`.github/workflows/ci.yaml`) runs `lint`, `format:check`, `typecheck`, `test`, `build` as a matrix against a real Postgres service container. Drizzle requires no code-generation step before these tasks (the schema is plain TypeScript).
+- Docker: `Dockerfile` has `runner` (app), `migrator` (Drizzle migrations), and `worker` (background jobs) targets; see `README.md` and `deploy/README.md` for local (docker-compose + Jaeger) and production (VPS + nginx/certbot) setups.

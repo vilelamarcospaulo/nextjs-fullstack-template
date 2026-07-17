@@ -4,7 +4,7 @@
 // Auth / Google OAuth vars that a standalone worker container will never
 // have set. DATABASE_URL itself is NOT re-validated here — src/lib/queue.ts
 // (via getQueue()) already reads it directly from process.env and throws a
-// descriptive error if it's missing, matching the style in prisma/seed.ts.
+// descriptive error if it's missing, matching the style in drizzle/seed.ts.
 // This module's only job is the worker's own optional tuning knobs.
 //
 // Imported by src/worker/index.ts via a relative path (the worker runs with

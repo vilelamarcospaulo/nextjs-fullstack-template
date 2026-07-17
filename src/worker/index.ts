@@ -4,7 +4,7 @@
 // with an explicit ".ts" extension. See src/lib/queue.ts for the same
 // convention, and CLAUDE.md / the plan doc for why.
 
-// OpenTelemetry must be started before anything that touches pino/Prisma at
+// OpenTelemetry must be started before anything that touches pino/pg at
 // require time (its instrumentations patch those modules' internals when
 // THEY are first required, not when the SDK is started). This mirrors the
 // exact gating in src/instrumentation.ts: only start the Node SDK when an

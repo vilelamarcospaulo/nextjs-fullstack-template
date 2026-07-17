@@ -1,11 +1,12 @@
-import { execSync } from "node:child_process";
-import { Client } from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
+import { Client, Pool } from "pg";
 
 // Vitest global setup (runs once, in the main process). Provisions a throwaway
 // Postgres database for the integration tests: a fresh `app_test` database
-// with all Prisma migrations applied.
+// with all Drizzle migrations applied.
 //
-// Workers receive DATABASE_URL via `test.env` in vitest.config.ts so the Prisma
+// Workers receive DATABASE_URL via `test.env` in vitest.config.ts so the Drizzle
 // client they construct points at this same database. Keep the two URLs in sync.
 const TEST_DB_NAME = "app_test";
 const MAINTENANCE_DB_URL =
@@ -32,20 +33,19 @@ async function recreateDatabase() {
 }
 
 export default async function setup() {
-  // Start from a clean slate so `migrate deploy` recreates the full schema.
+  // Start from a clean slate so the migrator recreates the full schema.
   await recreateDatabase();
 
+  const pool = new Pool({ connectionString: TEST_DB_URL });
   try {
-    execSync("npx prisma migrate deploy", {
-      cwd: process.cwd(),
-      env: { ...process.env, DATABASE_URL: TEST_DB_URL },
-      stdio: "pipe",
-    });
+    const db = drizzle(pool);
+    await migrate(db, { migrationsFolder: "drizzle/migrations" });
   } catch (err: unknown) {
-    const e = err as { stdout?: Buffer; stderr?: Buffer };
-    const out = e.stdout?.toString() ?? "";
-    const errOut = e.stderr?.toString() ?? "";
-    throw new Error(`prisma migrate deploy failed:\n${out}\n${errOut}`);
+    throw new Error(
+      `drizzle migrate failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  } finally {
+    await pool.end();
   }
 
   // No teardown: setup always drops and recreates `app_test` at the start of

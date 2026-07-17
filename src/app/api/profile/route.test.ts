@@ -3,8 +3,14 @@ vi.mock("@/lib/auth", () => ({ auth: { api: { getSession: vi.fn() } } }));
 
 import { auth } from "@/lib/auth";
 import { GET, PUT } from "@/app/api/profile/route";
-import { prisma } from "@/lib/prisma";
-import { resetDb, seedUser, seedProfile } from "../../../../test/helpers/db";
+import {
+  resetDb,
+  seedUser,
+  seedProfile,
+  getProfile,
+  getUser,
+  countProfiles,
+} from "../../../../test/helpers/db";
 
 const getSession = auth.api.getSession as unknown as ReturnType<typeof vi.fn>;
 
@@ -123,9 +129,7 @@ describe("PUT /api/profile", () => {
     expect(await res.json()).toEqual({
       errors: { _body: "Request body must be valid JSON." },
     });
-    expect(
-      await prisma.profile.findUnique({ where: { userId: "user-a" } }),
-    ).toBeNull();
+    expect(await getProfile("user-a")).toBeNull();
   });
 
   it("P-03: CREATE — no existing profile; body with all fields → 200 + correct view + DB persisted", async () => {
@@ -155,9 +159,7 @@ describe("PUT /api/profile", () => {
       location: "Paris",
     });
 
-    const profile = await prisma.profile.findUnique({
-      where: { userId: "user-a" },
-    });
+    const profile = await getProfile("user-a");
     expect(profile).not.toBeNull();
     expect(profile!.birthdate!.getUTCFullYear()).toBe(1990);
     expect(profile!.birthdate!.getUTCMonth()).toBe(4);
@@ -165,7 +167,7 @@ describe("PUT /api/profile", () => {
     expect(profile!.bio).toBe("Writer");
     expect(profile!.location).toBe("Paris");
 
-    const user = await prisma.user.findUnique({ where: { id: "user-a" } });
+    const user = await getUser("user-a");
     expect(user!.name).toBe("Alice Updated");
     expect(user!.image).toBe("https://example.com/img.png");
   });
@@ -193,16 +195,14 @@ describe("PUT /api/profile", () => {
 
     expect(res.status).toBe(200);
 
-    const profile = await prisma.profile.findUnique({
-      where: { userId: "user-a" },
-    });
+    const profile = await getProfile("user-a");
     expect(profile!.bio).toBe("New bio");
     expect(profile!.location).toBe("NYC");
     expect(profile!.birthdate!.getUTCFullYear()).toBe(1985);
     expect(profile!.birthdate!.getUTCMonth()).toBe(10);
     expect(profile!.birthdate!.getUTCDate()).toBe(20);
 
-    const count = await prisma.profile.count({ where: { userId: "user-a" } });
+    const count = await countProfiles("user-a");
     expect(count).toBe(1);
   });
 
@@ -221,9 +221,7 @@ describe("PUT /api/profile", () => {
     const body = await res.json();
     expect(body.errors.name).toBe("Name is required.");
     expect(Object.keys(body.errors)).toHaveLength(1);
-    expect(
-      await prisma.profile.findUnique({ where: { userId: "user-a" } }),
-    ).toBeNull();
+    expect(await getProfile("user-a")).toBeNull();
   });
 
   it("P-06: name too long → 400 name error; no write", async () => {
@@ -241,9 +239,7 @@ describe("PUT /api/profile", () => {
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.errors.name).toBe("Name must be 80 characters or fewer.");
-    expect(
-      await prisma.profile.findUnique({ where: { userId: "user-a" } }),
-    ).toBeNull();
+    expect(await getProfile("user-a")).toBeNull();
   });
 
   it("P-07: non-http(s) image URL → 400 image error; no write", async () => {
@@ -263,9 +259,7 @@ describe("PUT /api/profile", () => {
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.errors.image).toBe("Image must be a valid http(s) URL.");
-    expect(
-      await prisma.profile.findUnique({ where: { userId: "user-a" } }),
-    ).toBeNull();
+    expect(await getProfile("user-a")).toBeNull();
   });
 
   it("P-08: image URL exactly 2049 chars → 400 image error; no write", async () => {
@@ -285,9 +279,7 @@ describe("PUT /api/profile", () => {
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.errors.image).toBeDefined();
-    expect(
-      await prisma.profile.findUnique({ where: { userId: "user-a" } }),
-    ).toBeNull();
+    expect(await getProfile("user-a")).toBeNull();
   });
 
   it("P-09: birthdate in the future → 400 birthdate error; no write", async () => {
@@ -306,9 +298,7 @@ describe("PUT /api/profile", () => {
     expect(body.errors.birthdate).toBe(
       "Birthdate must be a real date in the past.",
     );
-    expect(
-      await prisma.profile.findUnique({ where: { userId: "user-a" } }),
-    ).toBeNull();
+    expect(await getProfile("user-a")).toBeNull();
   });
 
   it("P-10: birthdate before 1900 → 400 birthdate error; no write", async () => {
@@ -327,9 +317,7 @@ describe("PUT /api/profile", () => {
     expect(body.errors.birthdate).toBe(
       "Birthdate must be a real date in the past.",
     );
-    expect(
-      await prisma.profile.findUnique({ where: { userId: "user-a" } }),
-    ).toBeNull();
+    expect(await getProfile("user-a")).toBeNull();
   });
 
   it("P-11: birthdate in wrong format (MM/DD/YYYY) → 400 birthdate error; no write", async () => {
@@ -348,9 +336,7 @@ describe("PUT /api/profile", () => {
     expect(body.errors.birthdate).toBe(
       "Birthdate must be a real date in the past.",
     );
-    expect(
-      await prisma.profile.findUnique({ where: { userId: "user-a" } }),
-    ).toBeNull();
+    expect(await getProfile("user-a")).toBeNull();
   });
 
   it("P-12: birthdate with invalid calendar day (Feb 30) → 400 birthdate error; no write", async () => {
@@ -369,9 +355,7 @@ describe("PUT /api/profile", () => {
     expect(body.errors.birthdate).toBe(
       "Birthdate must be a real date in the past.",
     );
-    expect(
-      await prisma.profile.findUnique({ where: { userId: "user-a" } }),
-    ).toBeNull();
+    expect(await getProfile("user-a")).toBeNull();
   });
 
   it("P-13: bio too long → 400 bio error; no write", async () => {
@@ -388,9 +372,7 @@ describe("PUT /api/profile", () => {
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.errors.bio).toBe("Bio must be 280 characters or fewer.");
-    expect(
-      await prisma.profile.findUnique({ where: { userId: "user-a" } }),
-    ).toBeNull();
+    expect(await getProfile("user-a")).toBeNull();
   });
 
   it("P-14: location too long → 400 location error; no write", async () => {
@@ -409,9 +391,7 @@ describe("PUT /api/profile", () => {
     expect(body.errors.location).toBe(
       "Location must be 120 characters or fewer.",
     );
-    expect(
-      await prisma.profile.findUnique({ where: { userId: "user-a" } }),
-    ).toBeNull();
+    expect(await getProfile("user-a")).toBeNull();
   });
 
   it("P-15: multiple field errors at once → 400 with all 5 error keys; no write", async () => {
@@ -439,9 +419,7 @@ describe("PUT /api/profile", () => {
     expect(body.errors.birthdate).toBeDefined();
     expect(body.errors.bio).toBeDefined();
     expect(body.errors.location).toBeDefined();
-    expect(
-      await prisma.profile.findUnique({ where: { userId: "user-a" } }),
-    ).toBeNull();
+    expect(await getProfile("user-a")).toBeNull();
   });
 
   it("P-16: SECURITY — userId in body is ignored; only session user is updated", async () => {
@@ -464,15 +442,13 @@ describe("PUT /api/profile", () => {
     const body = await res.json();
     expect(body.email).toBe("alice@example.com");
 
-    const userA = await prisma.user.findUnique({ where: { id: "user-a" } });
+    const userA = await getUser("user-a");
     expect(userA!.name).toBe("Hijacked");
 
-    const userB = await prisma.user.findUnique({ where: { id: "user-b" } });
+    const userB = await getUser("user-b");
     expect(userB!.name).toBe("Bob");
 
-    expect(
-      await prisma.profile.findUnique({ where: { userId: "user-b" } }),
-    ).toBeNull();
+    expect(await getProfile("user-b")).toBeNull();
   });
 
   it("P-17: empty-string optionals clear existing profile fields", async () => {
@@ -505,14 +481,12 @@ describe("PUT /api/profile", () => {
     expect(body.bio).toBeNull();
     expect(body.location).toBeNull();
 
-    const profile = await prisma.profile.findUnique({
-      where: { userId: "user-a" },
-    });
+    const profile = await getProfile("user-a");
     expect(profile!.birthdate).toBeNull();
     expect(profile!.bio).toBeNull();
     expect(profile!.location).toBeNull();
 
-    const user = await prisma.user.findUnique({ where: { id: "user-a" } });
+    const user = await getUser("user-a");
     expect(user!.image).toBeNull();
   });
 
@@ -548,9 +522,7 @@ describe("PUT /api/profile", () => {
     expect(body.bio.length).toBe(280);
     expect(body.location.length).toBe(120);
 
-    const profile = await prisma.profile.findUnique({
-      where: { userId: "user-a" },
-    });
+    const profile = await getProfile("user-a");
     expect(profile).not.toBeNull();
   });
 });

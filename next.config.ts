@@ -12,8 +12,8 @@ const nextConfig: NextConfig = {
   //   2. A single shared @opentelemetry/api instance must back both the SDK
   //      (instrumentation.node.ts) and request code (onRequestError), or the
   //      global trace context won't line up.
-  // @prisma/client and pino are already in Next's default external list, so the
-  // Prisma/Pino instrumentations attach without listing them here.
+  // pg and pino are already in Next's default external list, so the
+  // pg/Pino instrumentations attach without listing them here.
   serverExternalPackages: [
     "@opentelemetry/api",
     "@opentelemetry/sdk-node",
@@ -24,7 +24,7 @@ const nextConfig: NextConfig = {
     "@opentelemetry/exporter-logs-otlp-http",
     "@opentelemetry/semantic-conventions",
     "@opentelemetry/instrumentation-pino",
-    "@prisma/instrumentation",
+    "@opentelemetry/instrumentation-pg",
   ],
 };
 

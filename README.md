@@ -8,7 +8,7 @@ Open the homepage after starting the dev server and you'll find three live demos
 
 - **[Next.js 16](https://nextjs.org)** (App Router, Turbopack) + **React 19**
 - **[better-auth](https://www.better-auth.com)** — Google OAuth sign-in
-- **[Prisma 7](https://www.prisma.io)** + Postgres, via the `@prisma/adapter-pg` driver adapter
+- **[Drizzle ORM](https://orm.drizzle.team)** + Postgres, via the `drizzle-orm/node-postgres` driver
 - **[pg-boss](https://github.com/timgit/pg-boss)** — Postgres-backed background job queue, run by a standalone worker process
 - **[OpenTelemetry](https://opentelemetry.io)** + pino — structured logs and traces, opt-in
 - **[shadcn/ui](https://ui.shadcn.com)** + Tailwind CSS
@@ -48,10 +48,11 @@ At minimum you need `DATABASE_URL` (in `.env`) and `BETTER_AUTH_SECRET` + Google
 **4. Run migrations and seed data**
 
 ```bash
-npx prisma migrate dev
+npx drizzle-kit migrate
+npm run db:seed
 ```
 
-This also generates the Prisma client and seeds a demo user/profile (see `prisma/seed.ts`).
+The first command applies the schema migrations from `drizzle/migrations/`, and the second seeds a demo user/profile (see `drizzle/seed.ts`). These are now two separate manual steps since Drizzle has no post-migrate seed hook like Prisma did.
 
 **5. Start the dev server**
 
@@ -77,8 +78,8 @@ src/
 ├── components/     # UI components (shadcn/ui + app-specific)
 ├── internal/
 │   ├── domain/     # Framework-free types and validation
-│   └── use_case/   # Orchestration between domain and infra (Prisma, queue)
-├── lib/            # Infra singletons: Prisma client, auth, queue, logger, env
+│   └── use_case/   # Orchestration between domain and infra (Drizzle, queue)
+├── lib/            # Infra singletons: Drizzle client, auth, queue, logger, env
 ├── utils/          # Small pure helper functions
 └── worker/         # Standalone entrypoint for the background job worker
 ```
@@ -126,5 +127,5 @@ See [`deploy/README.md`](deploy/README.md) for the full production setup walkthr
 
 - [Next.js Documentation](https://nextjs.org/docs)
 - [better-auth Documentation](https://www.better-auth.com/docs)
-- [Prisma Documentation](https://www.prisma.io/docs)
+- [Drizzle ORM Documentation](https://orm.drizzle.team/docs/overview)
 - [pg-boss Documentation](https://github.com/timgit/pg-boss#readme)

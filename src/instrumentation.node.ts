@@ -12,6 +12,7 @@
 
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+import { PgInstrumentation } from "@opentelemetry/instrumentation-pg";
 import { PinoInstrumentation } from "@opentelemetry/instrumentation-pino";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
@@ -21,7 +22,6 @@ import {
   ATTR_SERVICE_NAME,
   ATTR_SERVICE_VERSION,
 } from "@opentelemetry/semantic-conventions";
-import { PrismaInstrumentation } from "@prisma/instrumentation";
 
 const sdk = new NodeSDK({
   resource: resourceFromAttributes({
@@ -37,9 +37,10 @@ const sdk = new NodeSDK({
   spanProcessors: [new BatchSpanProcessor(new OTLPTraceExporter())],
   logRecordProcessors: [new BatchLogRecordProcessor(new OTLPLogExporter())],
   instrumentations: [
-    // Spans for Prisma queries. Prisma 7's driver-adapter client emits the
-    // prisma:client:* span family, which this instrumentation attaches to.
-    new PrismaInstrumentation(),
+    // Spans for pg (node-postgres) queries and connections — Drizzle's
+    // node-postgres driver emits `pg.query:*`, `pg.connect`, and
+    // `pg-pool.connect` spans, which this instrumentation attaches to.
+    new PgInstrumentation(),
     // Injects trace_id/span_id into pino logs and bridges them to the OTel Logs
     // exporter configured above.
     new PinoInstrumentation(),
