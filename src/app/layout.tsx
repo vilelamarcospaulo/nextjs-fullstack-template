@@ -17,9 +17,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Content Generator",
+  title: "Starter Kit",
   description:
-    "A Next.js fullstack service: SSR frontend + backend in one app.",
+    "A Next.js fullstack template: SSR frontend + backend in one app, wired up as a playground to explore before you build on top of it.",
 };
 
 export default async function RootLayout({

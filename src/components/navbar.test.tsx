@@ -111,9 +111,9 @@ describe("Navbar", () => {
       ).not.toBeInTheDocument();
     });
 
-    it("brand link 'Content Generator' points to '/'", () => {
+    it("brand link 'Starter Kit' points to '/'", () => {
       render(<Navbar user={null} />);
-      const link = screen.getByRole("link", { name: "Content Generator" });
+      const link = screen.getByRole("link", { name: "Starter Kit" });
       expect(link).toBeInTheDocument();
       expect(link).toHaveAttribute("href", "/");
     });

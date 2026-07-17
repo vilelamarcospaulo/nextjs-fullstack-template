@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CheckIcon } from "lucide-react";
+import { CheckIcon, PlusIcon } from "lucide-react";
 import { signOut, authClient } from "@/lib/auth-client";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { SignInButton } from "@/app/auth-buttons";
@@ -51,7 +51,7 @@ export function Navbar({ user }: { user: NavUser | null }) {
     <header className="bg-background/95 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50 border-b backdrop-blur">
       <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4 sm:px-6">
         <Link href="/" className="font-semibold">
-          Content Generator
+          Starter Kit
         </Link>
 
         <div className="flex items-center gap-2">
@@ -126,8 +126,12 @@ export function Navbar({ user }: { user: NavUser | null }) {
                     )}
                   </DropdownMenuItem>
                 ))}
-                <DropdownMenuItem>
-                  <Link href="/org/new" className="w-full">
+                <DropdownMenuItem className="text-primary focus:text-primary">
+                  <Link
+                    href="/org/new"
+                    className="flex w-full items-center gap-1.5 font-medium"
+                  >
+                    <PlusIcon className="size-4" />
                     New organization
                   </Link>
                 </DropdownMenuItem>

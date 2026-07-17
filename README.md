@@ -1,4 +1,4 @@
-# Arch View
+# Starter Kit
 
 A batteries-included Next.js 16 fullstack template: server actions, API routes, Google OAuth, a Postgres-backed job queue, and OpenTelemetry tracing, all wired up in one app so you can see how the pieces fit together before you build on top of them.
 
@@ -109,9 +109,9 @@ Telemetry is opt-in — the app runs fine without it, pino just logs plain JSON 
 2. Set in `.env.local`:
    ```bash
    OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
-   OTEL_SERVICE_NAME=arch-view
+   OTEL_SERVICE_NAME=starter-kit
    ```
-3. Restart `npm run dev`, then browse traces at [http://localhost:16686](http://localhost:16686) (service `arch-view`).
+3. Restart `npm run dev`, then browse traces at [http://localhost:16686](http://localhost:16686) (service `starter-kit`).
 
 ## Deployment
 

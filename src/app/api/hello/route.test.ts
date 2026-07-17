@@ -8,7 +8,7 @@ describe("GET /api/hello", () => {
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(body.message).toBe("Hello from the content-generator API.");
+    expect(body.message).toBe("Hello from the Starter Kit API.");
     expect(ISO_REGEX.test(body.timestamp)).toBe(true);
     expect(Number.isNaN(Date.parse(body.timestamp))).toBe(false);
   });

@@ -29,11 +29,12 @@ export default async function Home() {
     <div className="mx-auto flex max-w-5xl flex-col gap-12 px-4 py-16 sm:px-6">
       <section className="flex flex-col items-center gap-6 py-8 text-center">
         <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">
-          Content Generator
+          Starter Kit
         </h1>
         <p className="text-muted-foreground max-w-xl text-lg">
-          Generate personalised content with server actions and live API routes
-          — all in one fullstack Next.js app.
+          A batteries-included Next.js fullstack template — a playground to
+          see how server actions, API routes, and background jobs fit
+          together before you build on top of it.
         </p>
         {session?.user ? (
           <Link href="/profile" className={cn(buttonVariants({ size: "lg" }))}>
