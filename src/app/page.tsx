@@ -32,9 +32,9 @@ export default async function Home() {
           Starter Kit
         </h1>
         <p className="text-muted-foreground max-w-xl text-lg">
-          A batteries-included Next.js fullstack template — a playground to
-          see how server actions, API routes, and background jobs fit
-          together before you build on top of it.
+          A batteries-included Next.js fullstack template — a playground to see
+          how server actions, API routes, and background jobs fit together
+          before you build on top of it.
         </p>
         {session?.user ? (
           <Link href="/profile" className={cn(buttonVariants({ size: "lg" }))}>
