@@ -27,6 +27,9 @@ name = "starter-kit-worker"
 main = "src/worker/index.ts"
 compatibility_date = "2026-07-17"
 
+[observability]
+enabled = true
+
 [[queues.producers]]
 queue = "hello"
 binding = "HELLO_QUEUE"

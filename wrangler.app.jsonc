@@ -17,9 +17,7 @@
   "hyperdrive": [
     {
       "binding": "HYPERDRIVE",
-      // Placeholder — replace with the real Hyperdrive ID after running:
-      //   wrangler hyperdrive create <name> --connection-string=$DATABASE_URL
-      "id": "REPLACE_WITH_REAL_HYPERDRIVE_ID",
+      "id": "755d3e89a9cf4d6792580d642d91a0c6",
       "localConnectionString": "postgresql://postgres:postgres@localhost:5432/app",
     },
   ],
@@ -39,5 +37,11 @@
     // Enable image optimization
     // see https://opennext.js.org/cloudflare/howtos/image
     "binding": "IMAGES",
+  },
+  // Workers Logs storage/querying in the dashboard — off by default for a
+  // freshly created Worker, otherwise requires a manual per-Worker dashboard
+  // toggle each time. `wrangler tail` works regardless of this setting.
+  "observability": {
+    "enabled": true,
   },
 }
