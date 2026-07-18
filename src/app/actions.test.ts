@@ -1,12 +1,17 @@
 // Mock next/headers and better-auth before the module under test is imported,
 // matching the pattern used in src/app/api/profile/route.test.ts.
 vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
-vi.mock("@/lib/auth", () => ({ auth: { api: { getSession: vi.fn() } } }));
+vi.mock("@/lib/auth", () => {
+  const authMock = { api: { getSession: vi.fn() } };
+  return { getAuth: () => authMock };
+});
 
-import { auth } from "@/lib/auth";
+import { getAuth } from "@/lib/auth";
 import { generateGreeting } from "@/app/actions";
 
-const getSession = auth.api.getSession as unknown as ReturnType<typeof vi.fn>;
+const getSession = getAuth().api.getSession as unknown as ReturnType<
+  typeof vi.fn
+>;
 
 beforeEach(() => {
   vi.clearAllMocks();

@@ -1,7 +1,7 @@
 "use server";
 
 import { headers } from "next/headers";
-import { auth } from "@/lib/auth";
+import { getAuth } from "@/lib/auth";
 import { enqueueHelloJob as enqueueHelloJobUseCase } from "@/internal/use_case/jobs";
 import { newTraceId } from "@/lib/trace";
 
@@ -33,7 +33,7 @@ const MAX_NAME_LENGTH = 100;
 // render a friendly prompt instead of an unhandled error boundary.
 export async function generateGreeting(name: string): Promise<GreetingResult> {
   // ── 1. Auth check ──────────────────────────────────────────────────────────
-  const session = await auth.api.getSession({ headers: await headers() });
+  const session = await getAuth().api.getSession({ headers: await headers() });
   if (!session) {
     return { ok: false, error: "unauthenticated" };
   }
@@ -74,7 +74,7 @@ export async function submitHelloJob(
   message: string,
 ): Promise<JobActionResult> {
   // ── 1. Auth check ──────────────────────────────────────────────────────────
-  const session = await auth.api.getSession({ headers: await headers() });
+  const session = await getAuth().api.getSession({ headers: await headers() });
   if (!session) {
     return { ok: false, error: "unauthenticated" };
   }

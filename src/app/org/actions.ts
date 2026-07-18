@@ -2,7 +2,7 @@
 
 import { headers } from "next/headers";
 import { eq } from "drizzle-orm";
-import { auth } from "@/lib/auth";
+import { getAuth } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { user } from "@/lib/schema";
 
@@ -24,7 +24,7 @@ export async function addMemberByEmail(
   role: "admin" | "member",
 ): Promise<AddMemberResult> {
   // ── 1. Auth check ──────────────────────────────────────────────────────────
-  const session = await auth.api.getSession({ headers: await headers() });
+  const session = await getAuth().api.getSession({ headers: await headers() });
   if (!session) {
     return { ok: false, error: "unauthenticated" };
   }
@@ -38,14 +38,14 @@ export async function addMemberByEmail(
   }
 
   // ── 3. Permission check ──────────────────────────────────────────────────────
-  // auth.api.addMember (below) is server-only and enforces NO permission check
+  // getAuth().api.addMember (below) is server-only and enforces NO permission check
   // of its own (see node_modules/better-auth/dist/plugins/organization/routes/crud-members.mjs)
   // — it trusts the caller completely, so this action must gate it itself.
   // hasPermission resolves { error: string | null; success: boolean } (verified
   // in node_modules/better-auth/dist/plugins/organization/organization.mjs,
   // the `/organization/has-permission` endpoint's `ctx.json({ error: null,
   // success: result })`), not a plain boolean.
-  const permissionCheck = await auth.api.hasPermission({
+  const permissionCheck = await getAuth().api.hasPermission({
     headers: await headers(),
     body: { organizationId, permissions: { member: ["create"] } },
   });
@@ -64,7 +64,7 @@ export async function addMemberByEmail(
   }
 
   try {
-    await auth.api.addMember({
+    await getAuth().api.addMember({
       body: { organizationId, userId: targetUser.id, role },
     });
   } catch {

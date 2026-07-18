@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
-import { auth } from "@/lib/auth";
+import { getAuth } from "@/lib/auth";
 import OrgSettings from "./org-settings";
 
 // Server Component: resolves the org by slug server-side (via better-auth's
@@ -26,7 +26,7 @@ export default async function OrgPage({
   // "redirect on guard failure" convention.
   let organization;
   try {
-    organization = await auth.api.getFullOrganization({
+    organization = await getAuth().api.getFullOrganization({
       headers: await headers(),
       query: { organizationSlug: slug },
     });

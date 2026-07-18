@@ -1,7 +1,10 @@
 vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
-vi.mock("@/lib/auth", () => ({ auth: { api: { getSession: vi.fn() } } }));
+vi.mock("@/lib/auth", () => {
+  const authMock = { api: { getSession: vi.fn() } };
+  return { getAuth: () => authMock };
+});
 
-import { auth } from "@/lib/auth";
+import { getAuth } from "@/lib/auth";
 import { GET, PUT } from "@/app/api/profile/route";
 import {
   resetDb,
@@ -12,7 +15,9 @@ import {
   countProfiles,
 } from "../../../../test/helpers/db";
 
-const getSession = auth.api.getSession as unknown as ReturnType<typeof vi.fn>;
+const getSession = getAuth().api.getSession as unknown as ReturnType<
+  typeof vi.fn
+>;
 
 beforeEach(async () => {
   vi.clearAllMocks();

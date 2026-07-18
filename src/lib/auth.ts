@@ -7,15 +7,6 @@ import * as schema from "@/lib/schema";
 import { member } from "@/lib/schema";
 import { getEnv } from "@/lib/env";
 
-// Called once at module scope — see the residual-risk note above the
-// `betterAuth(...)` call below for why this (and getDb()) still run eagerly.
-const authEnv = getEnv();
-
-// Derive the trusted origin from the canonical app URL so better-auth's
-// CSRF / origin-check middleware accepts requests originating from this host.
-// Additional origins (e.g. a CDN or preview URL) can be appended to the array.
-const trustedOrigins = [new URL(authEnv.BETTER_AUTH_URL).origin];
-
 // ── Organization databaseHooks, extracted as standalone functions ──────────
 //
 // Both are wired into `databaseHooks` below but exported here so they can be
@@ -43,7 +34,7 @@ export async function createPersonalOrgForUser(user: {
   id: string;
   name: string;
 }): Promise<void> {
-  await auth.api.createOrganization({
+  await getAuth().api.createOrganization({
     body: {
       name: `${user.name}'s workspace`,
       slug: `user-${user.id}`,
@@ -75,79 +66,86 @@ export async function defaultActiveOrganization(session: {
   return { data: { activeOrganizationId: firstMembership.organizationId } };
 }
 
-// Server-side Better Auth instance. Persistence runs through Drizzle (node-postgres).
-// Google is the only provider for now.
-//
-// Residual risk (accepted for this migration phase, not fixed here):
-// drizzleAdapter() needs a concrete client synchronously, and betterAuth()
-// itself has no lazy/async form, so getDb() and getEnv() are both called at
-// module top level here — the same cold-start-before-request-context
-// exposure src/lib/env.ts's old eager pattern had. getDb()'s Hyperdrive-then-
-// DATABASE_URL fallback (see src/lib/db.ts) makes this self-healing in
-// practice (a getCloudflareContext() failure just falls through to the same
-// direct-connection path Node/Docker already use), but a fully lazy
-// getAuth() wrapper — touching every route handler, server action, and test
-// that imports `auth` — is out of scope for this phase.
-export const auth = betterAuth({
-  database: drizzleAdapter(getDb(), { provider: "pg", schema }),
-  baseURL: authEnv.BETTER_AUTH_URL,
-  secret: authEnv.BETTER_AUTH_SECRET,
+// Builds a fresh Better Auth instance on every call — deliberately not
+// cached as a module-level singleton. betterAuth() captures a concrete
+// Drizzle client (getDb()) at construction time, and a cached singleton
+// would keep reusing that one client's underlying pg.Pool/socket across
+// every request in the isolate — the same cross-request I/O reuse bug fixed
+// in src/lib/db.ts, just one level up (a stale connection surfaces here as
+// hung or failed requests specifically on routes that hit the database,
+// e.g. the OAuth callback). betterAuth() itself has no lazy/async form, so
+// getEnv()/getDb() run eagerly on each getAuth() call instead of at module
+// scope — safe because both are request-scoped-safe functions themselves
+// (see src/lib/env.ts, src/lib/db.ts). Call from request-scoped code (a
+// Route Handler, Server Action, or Server Component render) only.
+export function getAuth() {
+  const authEnv = getEnv();
 
-  // Origins that better-auth will accept for CSRF and callback-URL checks.
-  // Verified in node_modules/@better-auth/core/dist/types/init-options.d.mts:
-  //   trustedOrigins?: string[] | ((request?) => Awaitable<string[]>)
-  trustedOrigins,
+  // Derive the trusted origin from the canonical app URL so better-auth's
+  // CSRF / origin-check middleware accepts requests originating from this
+  // host. Additional origins (e.g. a CDN or preview URL) can be appended.
+  const trustedOrigins = [new URL(authEnv.BETTER_AUTH_URL).origin];
 
-  socialProviders: {
-    google: {
-      clientId: authEnv.GOOGLE_CLIENT_ID,
-      clientSecret: authEnv.GOOGLE_CLIENT_SECRET,
+  return betterAuth({
+    database: drizzleAdapter(getDb(), { provider: "pg", schema }),
+    baseURL: authEnv.BETTER_AUTH_URL,
+    secret: authEnv.BETTER_AUTH_SECRET,
+
+    // Origins that better-auth will accept for CSRF and callback-URL checks.
+    // Verified in node_modules/@better-auth/core/dist/types/init-options.d.mts:
+    //   trustedOrigins?: string[] | ((request?) => Awaitable<string[]>)
+    trustedOrigins,
+
+    socialProviders: {
+      google: {
+        clientId: authEnv.GOOGLE_CLIENT_ID,
+        clientSecret: authEnv.GOOGLE_CLIENT_SECRET,
+      },
     },
-  },
 
-  // Rate limiting is explicitly disabled for now: better-auth's built-in
-  // "memory" storage is a per-process counter, which doesn't work across
-  // Cloudflare Workers isolates (many short-lived, concurrent isolates, no
-  // shared memory between them) — leaving it enabled with "memory" storage
-  // wouldn't actually rate-limit anything in production, just silently
-  // pretend to. Note that simply omitting this block would NOT disable rate
-  // limiting: better-auth's own default is enabled-in-production. Revisit
-  // with a durable store (Workers KV or D1) backing it in a later phase.
-  rateLimit: {
-    enabled: false,
-  },
+    // Rate limiting is explicitly disabled for now: better-auth's built-in
+    // "memory" storage is a per-process counter, which doesn't work across
+    // Cloudflare Workers isolates (many short-lived, concurrent isolates, no
+    // shared memory between them) — leaving it enabled with "memory" storage
+    // wouldn't actually rate-limit anything in production, just silently
+    // pretend to. Note that simply omitting this block would NOT disable rate
+    // limiting: better-auth's own default is enabled-in-production. Revisit
+    // with a durable store (Workers KV or D1) backing it in a later phase.
+    rateLimit: {
+      enabled: false,
+    },
 
-  // Default owner/admin/member roles + built-in permission statements — no
-  // custom `ac`/`roles`, no `teams`, no `dynamicAccessControl`. Every signup
-  // gets a personal org (databaseHooks below); allowUserToCreateOrganization
-  // additionally lets users create further orgs beyond that one.
-  plugins: [organization({ allowUserToCreateOrganization: true })],
-
-  databaseHooks: {
-    user: {
-      create: {
-        after: async (user) => {
-          await createPersonalOrgForUser(user);
+    // Default owner/admin/member roles + built-in permission statements — no
+    // custom `ac`/`roles`, no `teams`, no `dynamicAccessControl`. Every signup
+    // gets a personal org (databaseHooks below); allowUserToCreateOrganization
+    // additionally lets users create further orgs beyond that one.
+    plugins: [organization({ allowUserToCreateOrganization: true })],
+    databaseHooks: {
+      user: {
+        create: {
+          after: async (user) => {
+            await createPersonalOrgForUser(user);
+          },
+        },
+      },
+      session: {
+        create: {
+          before: async (session) => {
+            // `session.activeOrganizationId` isn't part of better-auth's base
+            // Session type (it's added at runtime by the organization plugin —
+            // see the field-def comment on Session.activeOrganizationId in
+            // src/lib/schema.ts), so the databaseHooks callback type only
+            // knows about it via the callback's `& Record<string, unknown>`
+            // component, which types the value as `unknown`. Cast it to what it
+            // actually is at runtime.
+            return defaultActiveOrganization({
+              userId: session.userId,
+              activeOrganizationId: session.activeOrganizationId as
+                string | null | undefined,
+            });
+          },
         },
       },
     },
-    session: {
-      create: {
-        before: async (session) => {
-          // `session.activeOrganizationId` isn't part of better-auth's base
-          // Session type (it's added at runtime by the organization plugin —
-          // see the field-def comment on Session.activeOrganizationId in
-          // src/lib/schema.ts), so the databaseHooks callback type only
-          // knows about it via the callback's `& Record<string, unknown>`
-          // component, which types the value as `unknown`. Cast it to what it
-          // actually is at runtime.
-          return defaultActiveOrganization({
-            userId: session.userId,
-            activeOrganizationId: session.activeOrganizationId as
-              string | null | undefined,
-          });
-        },
-      },
-    },
-  },
-});
+  });
+}

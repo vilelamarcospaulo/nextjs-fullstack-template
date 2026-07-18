@@ -1,15 +1,16 @@
 vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
-vi.mock("@/lib/auth", () => ({
-  auth: {
+vi.mock("@/lib/auth", () => {
+  const authMock = {
     api: {
       getSession: vi.fn(),
       hasPermission: vi.fn(),
       addMember: vi.fn(),
     },
-  },
-}));
+  };
+  return { getAuth: () => authMock };
+});
 
-import { auth } from "@/lib/auth";
+import { getAuth } from "@/lib/auth";
 import { addMemberByEmail } from "@/app/org/actions";
 import {
   resetDb,
@@ -18,11 +19,15 @@ import {
   seedMember,
 } from "../../../test/helpers/db";
 
-const getSession = auth.api.getSession as unknown as ReturnType<typeof vi.fn>;
-const hasPermission = auth.api.hasPermission as unknown as ReturnType<
+const getSession = getAuth().api.getSession as unknown as ReturnType<
   typeof vi.fn
 >;
-const addMember = auth.api.addMember as unknown as ReturnType<typeof vi.fn>;
+const hasPermission = getAuth().api.hasPermission as unknown as ReturnType<
+  typeof vi.fn
+>;
+const addMember = getAuth().api.addMember as unknown as ReturnType<
+  typeof vi.fn
+>;
 
 beforeEach(async () => {
   vi.clearAllMocks();

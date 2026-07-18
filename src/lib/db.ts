@@ -5,14 +5,6 @@ import * as schema from "@/lib/schema";
 
 type DrizzleDb = ReturnType<typeof drizzle<typeof schema>>;
 
-// Cached per-isolate (Workers) / per-HMR-module (Next dev, Docker) on
-// globalThis, populated lazily on first call to getDb() rather than at
-// module-load time — module top level runs before a Workers request's
-// bindings exist, so building the client eagerly isn't safe there.
-const globalForDb = globalThis as unknown as {
-  db: DrizzleDb | undefined;
-};
-
 // Hyperdrive-first, DATABASE_URL-fallback: a deployed Worker gets its
 // connection string from the "HYPERDRIVE" binding (wrangler.app.jsonc);
 // everything else (next dev/opennextjs-cloudflare preview without a live
@@ -38,16 +30,21 @@ function resolveConnectionString(): string {
   return databaseUrl;
 }
 
-function createDb(): DrizzleDb {
-  const pool = new Pool({ connectionString: resolveConnectionString() });
-  return drizzle({ client: pool, schema });
-}
-
+// Builds a fresh client on every call — deliberately not cached on
+// globalThis. A Workers TCP socket (which a pg.Pool holds open) is only
+// valid for the request that opened it; caching the pool across requests in
+// the same isolate causes later, unrelated requests to reuse a torn-down
+// socket ("Network connection lost", or the runtime silently hanging until
+// its watchdog cancels the request). Hyperdrive already keeps the expensive
+// database-side connections warm, so paying for a new local Pool object per
+// call is cheap — see Cloudflare's own Hyperdrive + node-postgres examples,
+// which follow the same per-request-client pattern.
+//
 // Request-scoped accessor — call from within a Route Handler, Server Action,
 // or Server Component render; never store its result at module top level
 // (that's exactly the pattern this replaces — see the git history of this
 // file for the old `export const db` singleton it used to be).
 export function getDb(): DrizzleDb {
-  globalForDb.db ??= createDb();
-  return globalForDb.db;
+  const pool = new Pool({ connectionString: resolveConnectionString() });
+  return drizzle({ client: pool, schema });
 }
