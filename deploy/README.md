@@ -41,7 +41,7 @@ cp .dev.vars.example .dev.vars   # first time only
 pnpm run queue-worker:dev
 ```
 
-This runs `wrangler dev`, which simulates the `hello`/`hello-dlq` Cloudflare Queues locally via Miniflare. Set `QUEUE_LOCAL_PUSH_URL=http://localhost:8787` in `.env.local` (see `.env.example`) so the app's producer (`src/lib/queue.ts`) targets it instead of the real Cloudflare API.
+This runs `wrangler dev`, which simulates the `hello`/`hello-dlq` Cloudflare Queues locally via Miniflare. Set `QUEUE_LOCAL_PUSH_URL=http://localhost:8787` in `.env.local` (see `.env.example`) so the app's producer (`src/lib/queue.ts`) targets it instead of its normal `HELLO_QUEUE` binding — `next dev` and the queue consumer's `wrangler dev` are two separate local processes that can't otherwise share simulated queue state.
 
 6. (Optional) Preview the app itself running as a Worker, instead of via `next dev`:
 

@@ -25,6 +25,34 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS",
   },
+  // Producer binding for the "hello" queue (src/lib/queue.ts's sendJob reads
+  // it via getCloudflareContext().env.HELLO_QUEUE, same pattern as the
+  // HYPERDRIVE binding above) — pushes messages through Cloudflare's
+  // internal Worker-to-Queue path, no account id/API token/queue id needed.
+  // The queue itself is provisioned once via `wrangler queues create hello`.
+  "queues": {
+    "producers": [
+      {
+        "queue": "hello",
+        "binding": "HELLO_QUEUE",
+      },
+    ],
+  },
+  // QUEUE_LOCAL_PUSH_URL is pinned to "" deliberately: @opennextjs/cloudflare
+  // bakes whatever .env/.env.local values were present at `app:build` time
+  // into .open-next/cloudflare/next-env.mjs as a production fallback, and
+  // that fallback is only skipped for vars that have a real platform
+  // binding (see populateProcessEnv in
+  // node_modules/@opennextjs/cloudflare/dist/cli/templates/init.js). Without
+  // this, building app:build from a checkout whose .env.local still has the
+  // local-dev QUEUE_LOCAL_PUSH_URL=http://localhost:8787 override (see
+  // .env.example) ships that value to production, where sendJob's fetch to
+  // localhost gets blocked by the global_fetch_strictly_public flag above
+  // and returns a Cloudflare 403 (error 1003) instead of using the
+  // HELLO_QUEUE binding above.
+  "vars": {
+    "QUEUE_LOCAL_PUSH_URL": "",
+  },
   "services": [
     {
       // Self-reference service binding, the service name must match the worker name
