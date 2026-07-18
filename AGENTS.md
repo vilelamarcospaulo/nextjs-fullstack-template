@@ -5,7 +5,7 @@ Running **Next.js 16.2.9** with **React 19.2**. If your instincts say `middlewar
 
 - **All Request APIs are async, no exceptions.** `cookies()`, `headers()`, `draftMode()`, and `params`/`searchParams` in pages, layouts, and route handlers must be `await`ed. There is no sync fallback left (removed in 16; 15 only warned). Same for `params`/`id` in `opengraph-image`/`twitter-image`/`icon`/`apple-icon`/`sitemap` generators.
 - **`middleware.ts` → `proxy.ts`.** The file and the exported function are both renamed; `edge` runtime is not supported under the new name (stays `nodejs`, not configurable). This repo currently has no middleware/proxy file — if you add one, name it `proxy.ts` from the start.
-- **`next lint` is gone.** Lint via `eslint` directly (already wired as `npm run lint`, flat config in `eslint.config.mjs`). `next build` does not lint.
+- **`next lint` is gone.** Lint via `eslint` directly (already wired as `pnpm run lint`, flat config in `eslint.config.mjs`). `next build` does not lint.
 - **Turbopack is the default**, for both `dev` and `build` — no `--turbopack` flag needed (`package.json` scripts are already flag-free). A custom `webpack` config in `next.config.ts` would make `next build` fail by default; there isn't one here.
 - **`revalidateTag` needs a `cacheLife` profile as its second argument** now (`revalidateTag('posts', 'max')`); the one-arg form is a type error. For read-your-writes semantics use `updateTag` instead. Neither is used in this repo yet — check `node_modules/next/dist/docs/01-app/02-guides/upgrading/version-16.md` before introducing either.
 - **Parallel route slots require an explicit `default.js`/`default.tsx`.** Not applicable today (no `@slot` folders under `src/app`), but if you add one, it needs a default file or the build fails.
@@ -40,8 +40,8 @@ Drizzle ORM with `drizzle-orm/node-postgres` — uses the `pg` driver to connect
 
 - Schema: `src/lib/schema.ts` (pgTable definitions for all models; relations use Drizzle's relations() helpers). Plain TypeScript, no code generation step needed.
 - Config: `drizzle.config.ts` (schema path, migrations `out` directory, dbCredentials).
-- Seed: `drizzle/seed.ts`, run via `npm run db:seed` (Node's native TS stripping — no `ts-node`), idempotent upsert of a fixed-id demo user/profile. NOT automatically hooked into migrations, must be run manually after `drizzle-kit migrate`.
-- Migrations: `drizzle/migrations/` (SQL files generated via `npx drizzle-kit generate` after schema changes, applied via `npx drizzle-kit migrate`).
+- Seed: `drizzle/seed.ts`, run via `pnpm run db:seed` (Node's native TS stripping — no `ts-node`), idempotent upsert of a fixed-id demo user/profile. NOT automatically hooked into migrations, must be run manually after `drizzle-kit migrate`.
+- Migrations: `drizzle/migrations/` (SQL files generated via `pnpm exec drizzle-kit generate` after schema changes, applied via `pnpm exec drizzle-kit migrate`).
 
 # Background jobs
 
@@ -61,13 +61,13 @@ There is currently no distributed tracing story (no OTel replacement) — a know
 
 # Testing
 
-`vitest.config.ts` defines five projects — use the matching npm script, not bare `vitest run`, when you only need one:
+`vitest.config.ts` defines five projects — use the matching pnpm script, not bare `vitest run`, when you only need one:
 
-- **unit** (`npm run test:unit`) — `src/utils/**`, `src/internal/**`, `src/lib/**` `*.test.ts`. No database.
-- **integration** (`npm run test:integration`) — `src/app/**/*.test.ts` (excluding `*.app-worker.test.ts`). `test/global-setup.ts` recreates a throwaway `app_test` Postgres DB and applies migrations using Drizzle's programmatic migrator — needs a running Postgres.
-- **ui** (`npm run test:ui`) — jsdom, `*.test.tsx`. `test/setup-ui.ts` polyfills `ResizeObserver`/`PointerEvent`/pointer-capture/`matchMedia` for base-ui components — don't hand-roll these polyfills per test file.
-- **worker** (`npm run test:worker`) — `src/worker/**/*.test.ts`, the queue consumer exercised inside the real Workers runtime via `@cloudflare/vitest-pool-workers` (`wrangler.toml`).
-- **app-worker** (`npm run test:app-worker`) — `src/app/**/*.app-worker.test.ts`, the OpenNext-built app Worker exercised the same way (`wrangler.app.jsonc`). Needs a fresh `npm run app:build` first — `.open-next/worker.js` is a build artifact, not source.
+- **unit** (`pnpm run test:unit`) — `src/utils/**`, `src/internal/**`, `src/lib/**` `*.test.ts`. No database.
+- **integration** (`pnpm run test:integration`) — `src/app/**/*.test.ts` (excluding `*.app-worker.test.ts`). `test/global-setup.ts` recreates a throwaway `app_test` Postgres DB and applies migrations using Drizzle's programmatic migrator — needs a running Postgres.
+- **ui** (`pnpm run test:ui`) — jsdom, `*.test.tsx`. `test/setup-ui.ts` polyfills `ResizeObserver`/`PointerEvent`/pointer-capture/`matchMedia` for base-ui components — don't hand-roll these polyfills per test file.
+- **worker** (`pnpm run test:worker`) — `src/worker/**/*.test.ts`, the queue consumer exercised inside the real Workers runtime via `@cloudflare/vitest-pool-workers` (`wrangler.toml`).
+- **app-worker** (`pnpm run test:app-worker`) — `src/app/**/*.app-worker.test.ts`, the OpenNext-built app Worker exercised the same way (`wrangler.app.jsonc`). Needs a fresh `pnpm run app:build` first — `.open-next/worker.js` is a build artifact, not source.
 
 **Mocking convention**: partial mocks that don't implement a hook's full return type (e.g. a router mock with only `push`/`refresh`) must be cast as `as unknown as ReturnType<typeof useRouter>`, not a direct cast — TypeScript's strict mode rejects a direct cast when the mock only partially overlaps the real type. Same rule for `getDb()`'s mock in `profile.test.ts`: cast as `as unknown as ReturnType<typeof getDb>`.
 
@@ -75,8 +75,8 @@ There is currently no distributed tracing story (no OTel replacement) — a know
 
 Two independent Cloudflare Workers, two independent `wrangler` configs — there is no Docker/VPS path:
 
-- **The app** itself: `wrangler.app.jsonc`, built/deployed via the OpenNext Cloudflare adapter (`npm run app:build` / `app:preview` / `app:deploy`). Postgres access goes through a Hyperdrive binding (`HYPERDRIVE`, see `src/lib/db.ts`), not a direct `DATABASE_URL` connection.
-- **The background-job consumer**: `wrangler.toml`, `npm run queue-worker:dev` / `queue-worker:deploy`.
+- **The app** itself: `wrangler.app.jsonc`, built/deployed via the OpenNext Cloudflare adapter (`pnpm run app:build` / `app:preview` / `app:deploy`). Postgres access goes through a Hyperdrive binding (`HYPERDRIVE`, see `src/lib/db.ts`), not a direct `DATABASE_URL` connection.
+- **The background-job consumer**: `wrangler.toml`, `pnpm run queue-worker:dev` / `queue-worker:deploy`.
 
 `deploy/local/docker-compose.yaml` is local-dev-only now (just Postgres). See `deploy/README.md` for the full production setup (Hyperdrive provisioning, queues, secrets).
 

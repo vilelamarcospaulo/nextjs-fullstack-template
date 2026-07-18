@@ -5,7 +5,7 @@
 # (see git history: the app migrated to Cloudflare Workers, where pino/OTel
 # don't run — replaced by a plain console.log logger and Cloudflare's own
 # Workers Logs). Postgres is the only thing left here, still needed for local
-# dev regardless of runtime: `npm run dev`'s DATABASE_URL, and the app_test
+# dev regardless of runtime: `pnpm run dev`'s DATABASE_URL, and the app_test
 # database the integration test bootstrap creates/drops on the same server.
 
 services:

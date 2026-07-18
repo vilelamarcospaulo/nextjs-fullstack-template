@@ -34,7 +34,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Each entry maps to an npm script in package.json.
+        # Each entry maps to a script in package.json.
         task: ["lint", "format:check", "typecheck", "test", "build"]
     # GitHub Actions services apply to the whole job regardless of matrix
     # value, so lint/format/build also get an (unused) postgres container —
@@ -56,27 +56,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "11.5.2"
+
       - uses: actions/setup-node@v4
         with:
           # Node >= 23.6 so native TS stripping for `node drizzle/seed.ts`
           # works; using the current major to stay close to local dev.
           node-version: "24"
-          # Caches ~/.npm keyed on package-lock.json's hash — standard
+          # Caches the pnpm store keyed on pnpm-lock.yaml's hash — standard
           # setup-node lockfile-based caching, now that one is committed.
-          cache: "npm"
+          cache: "pnpm"
 
-      # npm ci is reproducible (installs exactly what's in package-lock.json,
-      # never touches it) and faster than npm install — matches how the
-      # Dockerfile's deps stage installs (Dockerfile, `deps` stage).
+      # --frozen-lockfile is reproducible (installs exactly what's in
+      # pnpm-lock.yaml, never touches it) and fails fast if the lockfile
+      # drifts from package.json.
       - name: Install dependencies
-        run: npm ci --no-audit --no-fund
+        run: pnpm install --frozen-lockfile
 
       # Build the OpenNext app Worker artifact (.open-next/worker.js) so the
       # app-worker Vitest project has something real to test. This runs
-      # regardless of matrix.task to ensure the artifact exists before `npm run
-      # test` executes. The build is idempotent and fast on subsequent runs.
+      # regardless of matrix.task to ensure the artifact exists before
+      # `pnpm test` executes. The build is idempotent and fast on subsequent
+      # runs.
       - name: Build OpenNext app Worker
-        run: npm run app:build
+        run: pnpm run app:build
 
       - name: Run ${{ matrix.task }}
-        run: npm run ${{ matrix.task }}
+        run: pnpm run ${{ matrix.task }}

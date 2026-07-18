@@ -21,7 +21,7 @@ You'll need Node.js 20.9+ and a Postgres database.
 **1. Install dependencies**
 
 ```bash
-npm install
+pnpm install
 ```
 
 **2. Start Postgres**
@@ -48,8 +48,8 @@ At minimum you need `DATABASE_URL` (in `.env`) and `BETTER_AUTH_SECRET` + Google
 **4. Run migrations and seed data**
 
 ```bash
-npx drizzle-kit migrate
-npm run db:seed
+pnpm exec drizzle-kit migrate
+pnpm run db:seed
 ```
 
 The first command applies the schema migrations from `drizzle/migrations/`, and the second seeds a demo user/profile (see `drizzle/seed.ts`). These are now two separate manual steps since Drizzle has no post-migrate seed hook like Prisma did.
@@ -57,7 +57,7 @@ The first command applies the schema migrations from `drizzle/migrations/`, and 
 **5. Start the dev server**
 
 ```bash
-npm run dev
+pnpm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
@@ -68,7 +68,7 @@ The "Async Job" demo on the homepage enqueues a job that only completes if a wor
 
 ```bash
 cp .dev.vars.example .dev.vars   # first time only
-npm run queue-worker:dev
+pnpm run queue-worker:dev
 ```
 
 ## Project layout
@@ -89,24 +89,24 @@ The core idea: `internal/domain` and `internal/use_case` don't know Next.js exis
 
 ## Scripts
 
-| Command                           | Description                                         |
-| --------------------------------- | --------------------------------------------------- |
-| `npm run dev`                     | Start the dev server (Turbopack)                    |
-| `npm run build`                   | Production build (`next build`)                     |
-| `npm run start`                   | Run a production build                              |
-| `npm run app:preview`             | Build via OpenNext and preview as a real Worker     |
-| `npm run app:deploy`              | Deploy the app to Cloudflare Workers                |
-| `npm run queue-worker:dev`        | Run the background job consumer locally (Miniflare) |
-| `npm run queue-worker:deploy`     | Deploy the background job consumer to Cloudflare    |
-| `npm run lint`                    | ESLint                                              |
-| `npm run format` / `format:check` | Prettier                                            |
-| `npm run typecheck`               | `tsc --noEmit`                                      |
-| `npm run test`                    | Run all tests                                       |
-| `npm run test:unit`               | Fast tests, no database                             |
-| `npm run test:integration`        | Tests against a real Postgres instance              |
-| `npm run test:ui`                 | Component tests (jsdom)                             |
-| `npm run test:worker`             | Queue consumer tests, real Workers runtime          |
-| `npm run test:app-worker`         | App tests, real Workers runtime                     |
+| Command                            | Description                                         |
+| ---------------------------------- | --------------------------------------------------- |
+| `pnpm run dev`                     | Start the dev server (Turbopack)                    |
+| `pnpm run build`                   | Production build (`next build`)                     |
+| `pnpm run start`                   | Run a production build                              |
+| `pnpm run app:preview`             | Build via OpenNext and preview as a real Worker     |
+| `pnpm run app:deploy`              | Deploy the app to Cloudflare Workers                |
+| `pnpm run queue-worker:dev`        | Run the background job consumer locally (Miniflare) |
+| `pnpm run queue-worker:deploy`     | Deploy the background job consumer to Cloudflare    |
+| `pnpm run lint`                    | ESLint                                              |
+| `pnpm run format` / `format:check` | Prettier                                            |
+| `pnpm run typecheck`               | `tsc --noEmit`                                      |
+| `pnpm run test`                    | Run all tests                                       |
+| `pnpm run test:unit`               | Fast tests, no database                             |
+| `pnpm run test:integration`        | Tests against a real Postgres instance              |
+| `pnpm run test:ui`                 | Component tests (jsdom)                             |
+| `pnpm run test:worker`             | Queue consumer tests, real Workers runtime          |
+| `pnpm run test:app-worker`         | App tests, real Workers runtime                     |
 
 ## Logging
 
