@@ -21,6 +21,7 @@ import { eq, and } from "drizzle-orm";
 import {
   createPersonalOrgForUser,
   defaultActiveOrganization,
+  getAuth,
 } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import * as schema from "@/lib/schema";
@@ -43,7 +44,7 @@ describe("createPersonalOrgForUser", () => {
       email: "alice@example.com",
     });
 
-    await createPersonalOrgForUser({ id: "user-a", name: "Alice" });
+    await createPersonalOrgForUser(getAuth(), { id: "user-a", name: "Alice" });
 
     const orgs = await getDb()
       .select()
@@ -71,7 +72,7 @@ describe("createPersonalOrgForUser", () => {
 
 describe("defaultActiveOrganization", () => {
   it("is a no-op when the session already has an active org", async () => {
-    const result = await defaultActiveOrganization({
+    const result = await defaultActiveOrganization(getDb(), {
       userId: "user-a",
       activeOrganizationId: "org-existing",
     });
@@ -86,7 +87,7 @@ describe("defaultActiveOrganization", () => {
       email: "alice@example.com",
     });
 
-    const result = await defaultActiveOrganization({
+    const result = await defaultActiveOrganization(getDb(), {
       userId: "user-a",
       activeOrganizationId: null,
     });
@@ -117,7 +118,7 @@ describe("defaultActiveOrganization", () => {
       createdAt: new Date("2026-01-01T00:00:00Z"),
     });
 
-    const result = await defaultActiveOrganization({
+    const result = await defaultActiveOrganization(getDb(), {
       userId: "user-a",
       activeOrganizationId: undefined,
     });

@@ -1,6 +1,5 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { getSession } from "@/lib/session";
 import { getAuth } from "@/lib/auth";
 import OrgSettings from "./org-settings";
 
@@ -15,7 +14,13 @@ export default async function OrgPage({
 }) {
   const { slug } = await params;
 
-  const session = await getSession();
+  // getAuth() called once and reused for both getSession and
+  // getFullOrganization below — src/lib/session.ts's cached getSession()
+  // isn't used here since it would call getAuth() again independently,
+  // opening a second DB connection for the same request.
+  const auth = getAuth();
+  const requestHeaders = await headers();
+  const session = await auth.api.getSession({ headers: requestHeaders });
   if (!session) {
     redirect("/");
   }
@@ -26,8 +31,8 @@ export default async function OrgPage({
   // "redirect on guard failure" convention.
   let organization;
   try {
-    organization = await getAuth().api.getFullOrganization({
-      headers: await headers(),
+    organization = await auth.api.getFullOrganization({
+      headers: requestHeaders,
       query: { organizationSlug: slug },
     });
   } catch {

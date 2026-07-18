@@ -3,7 +3,7 @@ import { Pool } from "pg";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import * as schema from "@/lib/schema";
 
-type DrizzleDb = ReturnType<typeof drizzle<typeof schema>>;
+export type DrizzleDb = ReturnType<typeof drizzle<typeof schema>>;
 
 // Hyperdrive-first, DATABASE_URL-fallback: a deployed Worker gets its
 // connection string from the "HYPERDRIVE" binding (wrangler.app.jsonc);

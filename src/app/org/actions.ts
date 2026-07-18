@@ -24,7 +24,10 @@ export async function addMemberByEmail(
   role: "admin" | "member",
 ): Promise<AddMemberResult> {
   // ── 1. Auth check ──────────────────────────────────────────────────────────
-  const session = await getAuth().api.getSession({ headers: await headers() });
+  // getAuth() is called once and reused below (getSession/hasPermission/
+  // addMember) rather than per call — each call opens its own DB connection.
+  const auth = getAuth();
+  const session = await auth.api.getSession({ headers: await headers() });
   if (!session) {
     return { ok: false, error: "unauthenticated" };
   }
@@ -45,7 +48,7 @@ export async function addMemberByEmail(
   // in node_modules/better-auth/dist/plugins/organization/organization.mjs,
   // the `/organization/has-permission` endpoint's `ctx.json({ error: null,
   // success: result })`), not a plain boolean.
-  const permissionCheck = await getAuth().api.hasPermission({
+  const permissionCheck = await auth.api.hasPermission({
     headers: await headers(),
     body: { organizationId, permissions: { member: ["create"] } },
   });
@@ -64,7 +67,7 @@ export async function addMemberByEmail(
   }
 
   try {
-    await getAuth().api.addMember({
+    await auth.api.addMember({
       body: { organizationId, userId: targetUser.id, role },
     });
   } catch {
